@@ -1,6 +1,7 @@
 # 圖片上傳和處理目錄
-static/uploads/
-static/frames/
+static/uploads/*
+!static/frames/
+!static/frames/*.png
 
 # Python
 __pycache__/
