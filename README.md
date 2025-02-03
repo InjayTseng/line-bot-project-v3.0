@@ -1,101 +1,66 @@
-# LINE Bot 相片框列印專案
+# LINE Bot 相片列印服務
 
-## 專案簡介
-這是一個基於 LINE Messaging API 開發的 Bot 應用程式，主要功能包括：
-1. 上傳照片：使用者可以透過 LINE 傳送照片
-2. 選擇相框：提供多種相框樣式供使用者選擇
-3. 套用相框：將選定的相框套用在使用者的照片上
-4. 列印功能：支援 Epson 印表機直接列印處理後的照片
-
-## 系統需求
-- Python 3.9+
-- Flask 框架
-- LINE Messaging API
-- ngrok (用於開發環境)
-- Epson 印表機驅動程式
-
-## 安裝步驟
-1. 安裝必要套件：
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-2. 設定 LINE Bot 認證資訊：
-- 在 LINE Developers Console 建立一個新的 Channel
-- 取得 Channel Secret 和 Channel Access Token
-- 將認證資訊更新到 `app.py` 中的相應變數
-
-3. 啟動本地伺服器：
-```bash
-python3 app.py
-```
-
-4. 使用 ngrok 建立通道：
-```bash
-./ngrok http 8000
-```
-
-## 使用說明
-1. 將 LINE Bot 加為好友
-2. 傳送照片給 Bot
-3. 根據 Bot 的提示選擇相框樣式
-4. 確認完成後，照片將自動進行列印
+這是一個 LINE Bot 應用程式，可以接收用戶上傳的照片，讓用戶選擇相框樣式，並將處理後的照片傳回給用戶。
 
 ## 功能特點
-- 支援多種相框樣式
-- 即時照片處理
-- 自動列印功能
-- 使用者友善的操作介面
 
-## 開發者資訊
-- 專案開發時間：2025年
-- 開發環境：macOS
-- 使用框架：Flask
-- 程式語言：Python
+- 接收並儲存用戶上傳的圖片
+- 支援多種圖片格式（PNG、JPG、JPEG、GIF）
+- 提供多種相框樣式供用戶選擇
+- 即時處理圖片並回傳結果
 
-## 注意事項
-- 請確保印表機已正確連接並設定
-- 建議在開發時使用 ngrok 進行測試
-- 注意 LINE Messaging API 的使用限制
+## 已完成功能
 
-## 待完成事項 (TODOs)
-### 1. 照片上傳功能
-- [ ] 實作照片接收和儲存功能
-- [ ] 設計照片暫存機制
-- [ ] 加入照片格式驗證
-- [ ] 實作照片大小限制和壓縮功能
+- [x] 基本的 LINE Bot 設定和連接
+- [x] 處理用戶上傳的圖片
+- [x] 實現框架選擇功能
+- [x] 圖片處理和回傳功能
 
-### 2. 相框功能
-- [ ] 設計相框選擇介面
-- [ ] 準備多種相框樣式
-- [ ] 實作相框預覽功能
-- [ ] 開發相框套用演算法
+## 待完成功能
 
-### 3. 照片處理
-- [ ] 整合 Pillow 函式庫
-- [ ] 實作照片和相框合成功能
-- [ ] 加入照片濾鏡效果（選擇性功能）
-- [ ] 優化照片處理效能
+- [ ] 添加更多相框樣式
+- [ ] 實現圖片列印功能
+- [ ] 優化圖片處理效果
+- [ ] 添加用戶使用說明
 
-### 4. 印表機整合
-- [ ] 整合 Epson 印表機 SDK
-- [ ] 實作列印佇列管理
-- [ ] 設計列印參數設定介面
-- [ ] 加入列印狀態回饋功能
+## 技術需求
 
-### 5. 系統優化
-- [ ] 加入使用者操作紀錄
-- [ ] 實作錯誤處理機制
-- [ ] 優化記憶體使用
-- [ ] 加強系統穩定性
+- Python 3.9+
+- Flask
+- LINE Messaging API
+- Pillow (用於圖片處理)
+- ngrok (用於開發測試)
 
-### 6. 安全性強化
-- [ ] 將敏感資訊移至環境變數
-- [ ] 加入資料加密機制
-- [ ] 實作請求驗證
-- [ ] 設定適當的存取權限
+## 安裝說明
 
-## 授權資訊
-本專案採用 MIT 授權條款
+1. 安裝所需套件：
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. 設定 LINE Bot 頻道：
+   - 在 LINE Developers Console 建立一個新的 Provider 和 Channel
+   - 設定 Webhook URL
+   - 更新程式碼中的 Channel Access Token 和 Channel Secret
+
+3. 啟動應用程式：
+   ```bash
+   python app.py
+   ```
+
+## 開發注意事項
+
+- 使用 ngrok 進行本地開發時，需要更新 LINE Developer Console 中的 Webhook URL
+- 圖片 URL 必須使用 HTTPS
+- 上傳的圖片會暫存在 `static/uploads` 目錄中
+
+## 專案結構
+
+```
+line-bot-project-v3.0/
+├── app.py              # 主程式
+├── requirements.txt    # 相依套件
+├── static/            
+│   └── uploads/       # 圖片上傳目錄
+└── README.md          # 說明文件
+```

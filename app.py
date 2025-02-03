@@ -5,7 +5,8 @@ from linebot.v3.messaging import (
     MessagingApi,
     MessagingApiBlob,
     ReplyMessageRequest,
-    TextMessage
+    TextMessage,
+    ImageMessage
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent, ImageMessageContent
 from linebot.v3.webhook import WebhookHandler
@@ -16,6 +17,7 @@ import requests
 import logging
 import traceback
 import sys
+from PIL import Image
 
 app = Flask(__name__)
 
@@ -32,6 +34,9 @@ CHANNEL_SECRET = '1d3649a096dd20c6b4e0917b3270841f'
 # 設定上傳目錄
 UPLOAD_FOLDER = 'static/uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+# 設定 ngrok URL（請替換成您的 ngrok URL）
+NGROK_URL = 'https://06e4-124-218-234-7.ngrok-free.app'
 
 # 確保上傳目錄存在
 if not os.path.exists(UPLOAD_FOLDER):
@@ -90,12 +95,114 @@ def save_image(message_id):
         app.logger.error(traceback.format_exc())
         return None
 
+def process_image_with_frame(image_filename, frame_style):
+    """
+    將用戶的圖片與選擇的框架合成
+    
+    Args:
+        image_filename (str): 原始圖片的檔名
+        frame_style (str): 選擇的框架樣式
+        
+    Returns:
+        str: 處理後的圖片檔名，如果處理失敗則返回 None
+    """
+    try:
+        # 構建檔案路徑
+        input_path = os.path.join(UPLOAD_FOLDER, image_filename)
+        
+        # 檢查輸入檔案是否存在
+        if not os.path.exists(input_path):
+            app.logger.error(f"找不到原始圖片：{input_path}")
+            return None
+            
+        # 讀取原始圖片
+        with Image.open(input_path) as img:
+            # TODO: 根據不同的框架樣式進行處理
+            # 這裡先簡單地調整圖片大小作為示範
+            processed_img = img.copy()
+            processed_img.thumbnail((800, 800))  # 調整圖片大小
+            
+            # 生成輸出檔名
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            output_filename = f"processed_{timestamp}_{image_filename}"
+            output_path = os.path.join(UPLOAD_FOLDER, output_filename)
+            
+            # 儲存處理後的圖片
+            processed_img.save(output_path, 'JPEG')
+            app.logger.info(f"圖片處理完成：{output_filename}")
+            
+            return output_filename
+            
+    except Exception as e:
+        app.logger.error(f"處理圖片時發生錯誤：{str(e)}")
+        app.logger.error(traceback.format_exc())
+        return None
+
+# 用戶狀態追蹤
+user_states = {}  # 用來存儲用戶的狀態
+FRAME_STYLES = {
+    '1': '簡約風格',
+    '2': '可愛風格',
+    '3': '復古風格',
+    '4': '節日風格'
+}
+
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
     try:
+        user_id = event.source.user_id
         user_message = event.message.text
-        response_message = f"你說的是：{user_message}"
         app.logger.info(f"接收到文字訊息：{user_message}")
+        
+        # 檢查用戶是否在等待選擇框架
+        if user_id in user_states and 'waiting_for_frame' in user_states[user_id]:
+            # 驗證用戶的選擇
+            if user_message in FRAME_STYLES:
+                # 儲存用戶的選擇
+                frame_style = FRAME_STYLES[user_message]
+                user_states[user_id]['frame_style'] = frame_style
+                
+                # 處理圖片
+                image_filename = user_states[user_id].get('image_filename')
+                if image_filename:
+                    processed_filename = process_image_with_frame(image_filename, frame_style)
+                    if processed_filename:
+                        # 構建圖片的完整 URL（使用 HTTPS）
+                        image_url = f"{NGROK_URL}/static/uploads/{processed_filename}"
+                        app.logger.info(f"處理後的圖片 URL：{image_url}")
+                        
+                        # 回傳文字訊息和圖片
+                        with ApiClient(configuration) as api_client:
+                            line_bot_api = MessagingApi(api_client)
+                            line_bot_api.reply_message_with_http_info(
+                                ReplyMessageRequest(
+                                    reply_token=event.reply_token,
+                                    messages=[
+                                        TextMessage(text=f"您的照片已處理完成！\n框架樣式：{frame_style}"),
+                                        ImageMessage(
+                                            originalContentUrl=image_url,
+                                            previewImageUrl=image_url
+                                        )
+                                    ]
+                                )
+                            )
+                        app.logger.info(f"用戶 {user_id} 的圖片處理完成：{processed_filename}")
+                        return
+                    else:
+                        response_message = "很抱歉，圖片處理失敗，請重新上傳照片。"
+                        app.logger.error(f"用戶 {user_id} 的圖片處理失敗")
+                else:
+                    response_message = "找不到您的照片，請重新上傳。"
+                    app.logger.error(f"找不到用戶 {user_id} 的原始圖片")
+                
+                # 清除用戶狀態
+                user_states.pop(user_id, None)
+            else:
+                response_message = f"請選擇有效的框架樣式（1-4）：\n1️⃣ 簡約風格\n2️⃣ 可愛風格\n3️⃣ 復古風格\n4️⃣ 節日風格"
+                app.logger.warning(f"用戶 {user_id} 輸入了無效的選擇：{user_message}")
+        else:
+            response_message = "請先傳送一張照片給我"
+            app.logger.warning(f"用戶 {user_id} 在未上傳圖片的情況下發送了訊息")
         
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
@@ -105,10 +212,22 @@ def handle_message(event):
                     messages=[TextMessage(text=response_message)]
                 )
             )
-        app.logger.info(f"成功回覆訊息：{response_message}")
+            
     except Exception as e:
-        app.logger.error(f"回覆訊息失敗：{str(e)}")
+        app.logger.error(f"處理文字訊息時發生錯誤：{str(e)}")
         app.logger.error(traceback.format_exc())
+        
+        try:
+            with ApiClient(configuration) as api_client:
+                line_bot_api = MessagingApi(api_client)
+                line_bot_api.reply_message_with_http_info(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text="很抱歉，系統發生錯誤，請稍後再試。")]
+                    )
+                )
+        except:
+            app.logger.error("發送錯誤訊息也失敗了")
 
 @handler.add(MessageEvent, message=ImageMessageContent)
 def handle_image_message(event):
@@ -121,6 +240,14 @@ def handle_image_message(event):
         if filename:
             reply_text = f"已收到您的照片！\n請選擇要使用的相框樣式：\n1️⃣ 簡約風格\n2️⃣ 可愛風格\n3️⃣ 復古風格\n4️⃣ 節日風格"
             app.logger.info("圖片處理成功，準備回覆選項訊息")
+            
+            # 記錄用戶狀態
+            user_id = event.source.user_id
+            user_states[user_id] = {
+                'waiting_for_frame': True,
+                'image_filename': filename
+            }
+            app.logger.debug(f"用戶狀態已更新：{user_states[user_id]}")
         else:
             reply_text = "很抱歉，照片處理時發生錯誤，請稍後再試。"
             app.logger.error("圖片處理失敗")
