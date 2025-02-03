@@ -31,6 +31,21 @@
 - Pillow (用於圖片處理)
 - ngrok (用於開發測試)
 
+## 環境變數設置
+
+1. 複製 `.env.example` 到 `.env`：
+   ```bash
+   cp .env.example .env
+   ```
+
+2. 編輯 `.env` 文件，填入您的 LINE Channel 資訊：
+   ```
+   LINE_CHANNEL_ACCESS_TOKEN=your_channel_access_token_here
+   LINE_CHANNEL_SECRET=your_channel_secret_here
+   ```
+
+3. 在 Render.com 部署時，請在環境變數設置中添加相同的變數。
+
 ## 安裝說明
 
 1. 安裝所需套件：
@@ -63,4 +78,3 @@ line-bot-project-v3.0/
 ├── static/            
 │   └── uploads/       # 圖片上傳目錄
 └── README.md          # 說明文件
-```

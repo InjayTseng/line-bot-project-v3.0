@@ -18,8 +18,12 @@ import logging
 import traceback
 import sys
 from PIL import Image
+import dotenv
 
 app = Flask(__name__)
+
+# 加載環境變數
+dotenv.load_dotenv()
 
 # 設定日誌級別
 logging.basicConfig(
@@ -27,9 +31,12 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-# 設定 LINE Channel 資訊
-CHANNEL_ACCESS_TOKEN = 'DWRA+HWkxIdL6/2+W+omDW7lIVnYaEO/ORyCo+rm3TtkGDzwo9dnJvSGIxke8/om+Pbj3FLr8iApjCGeeSmYkWxD67CewJfnk/nuVStpggxP+JlZCKCyDAM8plcJOdocNSt1g+/u9N+Qxne5586Y/AdB04t89/1O/w1cDnyilFU='
-CHANNEL_SECRET = '1d3649a096dd20c6b4e0917b3270841f'
+# 從環境變數獲取設定
+CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
+CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
+
+if not CHANNEL_ACCESS_TOKEN or not CHANNEL_SECRET:
+    raise ValueError("請設置 LINE_CHANNEL_ACCESS_TOKEN 和 LINE_CHANNEL_SECRET 環境變數")
 
 # 設定上傳目錄
 UPLOAD_FOLDER = 'static/uploads'
