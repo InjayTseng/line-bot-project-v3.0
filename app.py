@@ -95,6 +95,14 @@ def save_image(message_id):
         app.logger.error(traceback.format_exc())
         return None
 
+# 設定相框樣式對應的檔案名稱
+FRAME_FILES = {
+    '簡約風格': 'simple.png',
+    '可愛風格': 'cute.png',
+    '復古風格': 'vintage.png',
+    '節日風格': 'holiday.png'
+}
+
 def process_image_with_frame(image_filename, frame_style):
     """
     將用戶的圖片與選擇的框架合成
@@ -109,29 +117,67 @@ def process_image_with_frame(image_filename, frame_style):
     try:
         # 構建檔案路徑
         input_path = os.path.join(UPLOAD_FOLDER, image_filename)
+        frame_path = os.path.join('static/frames', FRAME_FILES.get(frame_style, 'simple.png'))
         
         # 檢查輸入檔案是否存在
         if not os.path.exists(input_path):
             app.logger.error(f"找不到原始圖片：{input_path}")
             return None
             
+        # 檢查相框檔案是否存在
+        if not os.path.exists(frame_path):
+            app.logger.error(f"找不到相框圖片：{frame_path}")
+            return None
+            
         # 讀取原始圖片
         with Image.open(input_path) as img:
-            # TODO: 根據不同的框架樣式進行處理
-            # 這裡先簡單地調整圖片大小作為示範
-            processed_img = img.copy()
-            processed_img.thumbnail((800, 800))  # 調整圖片大小
+            # 轉換圖片模式為 RGBA
+            if img.mode != 'RGBA':
+                img = img.convert('RGBA')
             
-            # 生成輸出檔名
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            output_filename = f"processed_{timestamp}_{image_filename}"
-            output_path = os.path.join(UPLOAD_FOLDER, output_filename)
+            # 獲取原始尺寸
+            original_width, original_height = img.size
             
-            # 儲存處理後的圖片
-            processed_img.save(output_path, 'JPEG')
-            app.logger.info(f"圖片處理完成：{output_filename}")
+            # 計算目標尺寸（保持原始比例）
+            if original_width > original_height:
+                # 橫向照片
+                target_height = 1080
+                target_width = int(original_width * (target_height / original_height))
+            else:
+                # 直向照片
+                target_width = 1080
+                target_height = int(original_height * (target_width / original_width))
             
-            return output_filename
+            # 調整圖片大小，保持原始比例
+            img = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+            
+            # 創建一個新的正方形畫布（1080x1080，透明背景）
+            canvas = Image.new('RGBA', (1080, 1080), (0, 0, 0, 0))
+            
+            # 將調整後的圖片置中貼上
+            paste_x = (1080 - target_width) // 2
+            paste_y = (1080 - target_height) // 2
+            canvas.paste(img, (paste_x, paste_y))
+            
+            # 讀取相框
+            with Image.open(frame_path) as frame:
+                if frame.mode != 'RGBA':
+                    frame = frame.convert('RGBA')
+                
+                # 合成圖片
+                result = Image.alpha_composite(canvas, frame)
+                
+                # 生成輸出檔名
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                output_filename = f"processed_{timestamp}_{image_filename}"
+                output_path = os.path.join(UPLOAD_FOLDER, output_filename)
+                
+                # 儲存處理後的圖片，使用高品質設定
+                result = result.convert('RGB')  # LINE 不支援 RGBA
+                result.save(output_path, 'JPEG', quality=95)
+                app.logger.info(f"圖片處理完成：{output_filename}")
+                
+                return output_filename
             
     except Exception as e:
         app.logger.error(f"處理圖片時發生錯誤：{str(e)}")

@@ -1,4 +1,4 @@
-#!/home/ubuntu/line-bot-project-v3.0/venv/bin/python3
+#!/Users/dtsneg/Documents/Document-M4/Projects.nosync/line-bot-project-v3.0/venv/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys
