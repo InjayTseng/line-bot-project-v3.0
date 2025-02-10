@@ -48,22 +48,20 @@ class ImageService:
                 # 調整框架大小以匹配用戶圖片
                 frame_resized = frame_image.resize(user_image.size, Image.Resampling.LANCZOS)
                 
-                # 確保兩張圖片模式相同
-                if user_image.mode != frame_resized.mode:
-                    if frame_resized.mode == 'RGBA' and user_image.mode == 'RGB':
-                        user_image = user_image.convert('RGBA')
-                    elif frame_resized.mode == 'RGB' and user_image.mode == 'RGBA':
-                        frame_resized = frame_resized.convert('RGBA')
+                # 將用戶圖片轉換為 RGBA 模式
+                user_image = user_image.convert('RGBA')
+                frame_resized = frame_resized.convert('RGBA')
                 
                 # 合成圖片
-                composite = Image.alpha_composite(user_image.convert('RGBA'), frame_resized)
+                composite = Image.alpha_composite(user_image, frame_resized)
                 
                 # 生成新檔名
                 timestamp = image_filename.split('_')[0]  # 取得時間戳記
                 processed_filename = f"processed_{timestamp}_{image_filename}"
                 processed_path = os.path.join(settings.UPLOAD_FOLDER, processed_filename)
                 
-                # 儲存處理後的圖片
+                # 儲存處理後的圖片（轉換為 RGB 以移除透明度）
+                composite = composite.convert('RGB')
                 composite.save(processed_path, 'JPEG', quality=80)
                 logger.info(f"圖片處理完成：{processed_path}")
                 
