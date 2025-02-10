@@ -394,7 +394,8 @@ def handle_message(event):
                                 raise Exception("圖片處理失敗")
                             
                             # 構建圖片的完整 URL
-                            image_url = f"{NGROK_URL}/static/uploads/{processed_filename}"
+                            # 根據環境使用對應的圖片 URL 路徑
+                            image_url = f"{BASE_URL}{IMAGES_URL_PATH}/{processed_filename}"
                             app.logger.info(f"處理後的圖片 URL：{image_url}")
                             
                             # 確保 URL 是 HTTPS
