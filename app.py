@@ -39,8 +39,8 @@ def serve_image(filename):
         app.logger.info(f"接收到圖片請求：{filename}")
         app.logger.info(f"請求頭部：{request.headers}")
         
-        # 檢查文件是否存在於 uploads 目錄
-        file_path = os.path.join('static/uploads', filename)
+        # 檢查文件是否存在
+        file_path = os.path.join(UPLOAD_FOLDER, filename)
         abs_path = os.path.abspath(file_path)
         app.logger.info(f"圖片完整路徑：{abs_path}")
         
@@ -98,7 +98,11 @@ if not NGROK_URL:
     raise ValueError("請設置 NGROK_URL 環境變數，例如：https://xxxx-xx-xxx-xxx-xx.ngrok-free.app")
 
 # 設定上傳目錄
-UPLOAD_FOLDER = 'static/uploads'
+# 在 Render 上使用臨時資料夾
+if os.environ.get('RENDER'):
+    UPLOAD_FOLDER = '/tmp/uploads'
+else:
+    UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/uploads')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 # 設定 ngrok URL（請替換成您的 ngrok URL）
@@ -167,6 +171,9 @@ FRAME_FILES = {
     '復古風格': 'vintage.png'
 }
 
+# 設定相框資料夾路徑
+FRAMES_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/frames')
+
 def process_image_with_frame(image_filename, frame_style):
     """
     將用戶的圖片與選擇的框架合成
@@ -181,7 +188,7 @@ def process_image_with_frame(image_filename, frame_style):
     try:
         # 構建檔案路徑
         input_path = os.path.join(UPLOAD_FOLDER, image_filename)
-        frame_path = os.path.join('static/frames', FRAME_FILES.get(frame_style, 'simple.png'))
+        frame_path = os.path.join(FRAMES_FOLDER, FRAME_FILES.get(frame_style, 'simple.png'))
         
         app.logger.debug(f"處理圖片：{input_path}")
         app.logger.debug(f"使用相框：{frame_path}")
@@ -220,30 +227,64 @@ def process_image_with_frame(image_filename, frame_style):
             
             app.logger.debug(f"調整後的目標尺寸：{target_width}x{target_height}")
             
-            # 調整圖片大小，保持原始比例
-            img = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+            # 讀取相框並獲取其原始尺寸
+            with Image.open(frame_path) as frame_size_check:
+                frame_width, frame_height = frame_size_check.size
+                frame_ratio = frame_width / frame_height
+                
+                # 使用相框的原始比例計算目標尺寸
+                target_height = 1080
+                target_width = int(target_height * frame_ratio)
             
-            # 創建一個新的正方形畫布（1080x1080，透明背景）
-            canvas = Image.new('RGBA', (1080, 1080), (0, 0, 0, 0))
-            app.logger.debug(f"創建畫布，尺寸：{canvas.size}")
+            # 調整圖片大小，保持原始比例
+            img_ratio = img.size[0] / img.size[1]
+            if img_ratio > frame_ratio:
+                # 如果原始圖片太寬，根據高度縮放
+                new_height = target_height
+                new_width = int(new_height * img_ratio)
+            else:
+                # 如果原始圖片太長，根據寬度縮放
+                new_width = target_width
+                new_height = int(new_width / img_ratio)
+            
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            app.logger.debug(f"調整後的圖片尺寸：{new_width}x{new_height}")
+            
+            # 創建畫布，使用相框的比例
+            canvas = Image.new('RGBA', (target_width, target_height), (0, 0, 0, 0))
+            app.logger.debug(f"創建畫布，尺寸：{target_width}x{target_height}")
             
             # 將調整後的圖片置中貼上
-            paste_x = (1080 - target_width) // 2
-            paste_y = (1080 - target_height) // 2
+            paste_x = (target_width - new_width) // 2
+            paste_y = (target_height - new_height) // 2
             canvas.paste(img, (paste_x, paste_y))
             app.logger.debug(f"圖片已置中貼上，位置：({paste_x}, {paste_y})")
             
-            # 讀取相框
+            # 讀取相框並獲取其原始尺寸
             with Image.open(frame_path) as frame:
                 app.logger.debug(f"相框原始模式：{frame.mode}, 尺寸：{frame.size}")
+                frame_width, frame_height = frame.size
+                frame_ratio = frame_width / frame_height
                 
                 if frame.mode != 'RGBA':
                     frame = frame.convert('RGBA')
                     app.logger.debug("已將相框轉換為 RGBA 模式")
                 
-                # 調整相框大小以符合畫布大小
-                frame = frame.resize((1080, 1080), Image.Resampling.LANCZOS)
-                app.logger.debug(f"調整後的相框尺寸：{frame.size}")
+                # 使用相框的原始比例計算畫布尺寸
+                target_height = 1080
+                target_width = int(target_height * frame_ratio)
+                
+                # 調整相框大小，保持原始比例
+                frame = frame.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                app.logger.debug(f"調整後的相框尺寸：{target_width}x{target_height}")
+                
+                # 重新設定畫布尺寸以符合相框比例
+                canvas = Image.new('RGBA', (target_width, target_height), (0, 0, 0, 0))
+                
+                # 重新計算圖片的貼上位置
+                paste_x = (target_width - target_width) // 2
+                paste_y = (target_height - target_height) // 2
+                canvas.paste(img, (paste_x, paste_y))
                 
                 # 合成圖片
                 try:
@@ -424,6 +465,33 @@ def handle_message(event):
                                     )
                                     app.logger.info(f"訊息發送成功，響應：{response}")
                                     
+                                    # 設定延遲刪除的時間，確保 LINE 有足夠時間獲取圖片
+                                    def delayed_cleanup(original_path, processed_path, delay_seconds=300):  # 5 分鐘後刪除
+                                        try:
+                                            time.sleep(delay_seconds)
+                                            # 刪除原始圖片
+                                            if os.path.exists(original_path):
+                                                os.remove(original_path)
+                                                app.logger.info(f"原始圖片已刪除：{original_path}")
+                                            
+                                            # 刪除處理後的圖片
+                                            if os.path.exists(processed_path):
+                                                os.remove(processed_path)
+                                                app.logger.info(f"處理後的圖片已刪除：{processed_path}")
+                                        except Exception as e:
+                                            app.logger.error(f"刪除圖片時發生錯誤：{str(e)}")
+                                    
+                                    # 啟動一個新的執行緒來處理延遲刪除
+                                    import threading
+                                    original_path = os.path.join(UPLOAD_FOLDER, image_filename)
+                                    cleanup_thread = threading.Thread(
+                                        target=delayed_cleanup,
+                                        args=(original_path, processed_path),
+                                        daemon=True
+                                    )
+                                    cleanup_thread.start()
+                                    app.logger.info("已啟動延遲刪除執行緒")
+                                    
                             except Exception as e:
                                 app.logger.error(f"發送圖片訊息時發生錯誤：{str(e)}")
                                 # 如果發生錯誤，發送錯誤訊息
@@ -451,8 +519,9 @@ def handle_message(event):
                 # 清除用戶狀態
                 user_states.pop(user_id, None)
             else:
-                response_message = f"請選擇有效的框架樣式（1-4）：\n1️⃣ 簡約風格\n2️⃣ 可愛風格\n3️⃣ 復古風格\n4️⃣ 節日風格"
+                response_message = f"您好，您輸入了：{user_message}\n請上傳一張圖片繼續。"
                 app.logger.warning(f"用戶 {user_id} 輸入了無效的選擇：{user_message}")
+
         else:
             response_message = "請先傳送一張照片給我"
             app.logger.warning(f"用戶 {user_id} 在未上傳圖片的情況下發送了訊息")
