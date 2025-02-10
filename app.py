@@ -109,16 +109,17 @@ else:
 
 app.logger.info(f"使用的基礎 URL：{BASE_URL}")
 
-# 設定上傳目錄
-# 在 Render 上使用臨時資料夾
+# 設定上傳目錄和 URL 路徑
 if os.environ.get('RENDER'):
     UPLOAD_FOLDER = '/tmp/uploads'
+    # 在 Render 上，圖片會通過 /images 路由提供
+    IMAGES_URL_PATH = '/images'
 else:
     UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/uploads')
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+    # 在本地環境，圖片通過 static 目錄提供
+    IMAGES_URL_PATH = '/static/uploads'
 
-# 設定 ngrok URL（請替換成您的 ngrok URL）
-NGROK_URL = os.environ.get('NGROK_URL')
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 # 確保上傳目錄存在
 if not os.path.exists(UPLOAD_FOLDER):
@@ -447,17 +448,17 @@ def handle_message(event):
                             # 檢查圖片 URL 是否可訪問
                             try:
                                 # 使用專用的圖片路由
-                                if os.environ.get('RENDER'):
-                                    # 在 Render 環境中，使用完整的 URL
-                                    image_url = f"{BASE_URL}/images/{processed_filename}"
-                                else:
-                                    # 在本地環境中，使用 NGROK_URL
-                                    image_url = f"{BASE_URL}/images/{processed_filename}"
+                                # 根據環境使用對應的圖片 URL 路徑
+                                image_url = f"{BASE_URL}{IMAGES_URL_PATH}/{processed_filename}"
                                 
-                                app.logger.info(f"圖片 URL：{image_url}")
+                                app.logger.info(f"基礎 URL：{BASE_URL}")
+                                app.logger.info(f"圖片 URL 路徑：{IMAGES_URL_PATH}")
+                                app.logger.info(f"圖片檔名：{processed_filename}")
+                                app.logger.info(f"完整圖片 URL：{image_url}")
                                 
                                 # 確保 URL 是 HTTPS
                                 if not image_url.startswith('https://'):
+                                    app.logger.error(f"URL 不是 HTTPS: {image_url}")
                                     raise ValueError(f"URL 必須是 HTTPS: {image_url}")
                                 
                                 response = requests.head(image_url)
