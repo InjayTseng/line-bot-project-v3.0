@@ -19,6 +19,9 @@ import logging
 import traceback
 import sys
 from PIL import Image
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
 import dotenv
 
 app = Flask(__name__, static_url_path='/static', static_folder='static')
@@ -82,31 +85,23 @@ CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
 if not CHANNEL_ACCESS_TOKEN or not CHANNEL_SECRET:
     raise ValueError("請設置 LINE_CHANNEL_ACCESS_TOKEN 和 LINE_CHANNEL_SECRET 環境變數")
 
-# 判斷環境並設定基礎 URL
-if os.environ.get('RENDER'):
-    # 在 Render 環境中，使用 RENDER_EXTERNAL_URL
-    BASE_URL = os.environ.get('RENDER_EXTERNAL_URL')
-    if not BASE_URL:
-        app.logger.warning("在 Render 環境中找不到 RENDER_EXTERNAL_URL，使用備用網址")
-        # 使用備用網址
-        BASE_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}"
-else:
-    # 在本地開發環境中，使用 NGROK_URL
-    BASE_URL = os.environ.get('NGROK_URL')
-    if not BASE_URL:
-        raise ValueError("在本地環境中請設置 NGROK_URL，例如：https://xxxx-xx-xxx-xxx-xx.ngrok-free.app")
+# 設定 Cloudinary
+cloudinary.config(
+    cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
+    api_key=os.environ.get('CLOUDINARY_API_KEY'),
+    api_secret=os.environ.get('CLOUDINARY_API_SECRET'),
+    secure=True
+)
 
-app.logger.info(f"使用的基礎 URL：{BASE_URL}")
+app.logger.info("Cloudinary 配置已設定")
 
-# 設定上傳目錄和 URL 路徑
+# 設定臨時上傳目錄
 if os.environ.get('RENDER'):
     UPLOAD_FOLDER = '/tmp/uploads'
-    # 在 Render 上，圖片會通過 /images 路由提供
-    IMAGES_URL_PATH = '/static/uploads'
 else:
-    UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/uploads')
-    # 在本地環境，圖片通過 static 目錄提供
-    IMAGES_URL_PATH = '/static/uploads'
+    UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tmp/uploads')
+
+app.logger.info(f"使用的臨時上傳目錄：{UPLOAD_FOLDER}")
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
@@ -382,15 +377,41 @@ def handle_message(event):
                                 app.logger.error(f"找不到處理後的圖片：{processed_path}")
                                 raise Exception("圖片處理失敗")
                             
-                            # 構建圖片的完整 URL
-                            # 根據環境使用對應的圖片 URL 路徑
-                            image_url = f"{BASE_URL}{IMAGES_URL_PATH}/{processed_filename}"
-                            app.logger.info(f"處理後的圖片 URL：{image_url}")
-                            
-                            # 確保 URL 是 HTTPS
-                            if not image_url.startswith('https'):
-                                app.logger.error(f"URL 必須是 HTTPS: {image_url}")
-                                raise ValueError("URL must be HTTPS")
+                            # 上傳圖片到 Cloudinary
+                            try:
+                                # 檢查圖片大小
+                                file_size = os.path.getsize(processed_path)
+                                app.logger.info(f"處理後的圖片大小：{file_size} bytes")
+
+                                # 如果圖片太大，嘗試再次處理
+                                if file_size > 300000:  # 如果大於 300KB
+                                    app.logger.info("圖片太大，嘗試再次處理")
+                                    with Image.open(processed_path) as img:
+                                        img = img.convert('RGB')
+                                        # 降低尺寸
+                                        img.thumbnail((800, 800))
+                                        # 降低品質
+                                        img.save(processed_path, 'JPEG', quality=70, optimize=True)
+                                    file_size = os.path.getsize(processed_path)
+                                    app.logger.info(f"重新處理後的圖片大小：{file_size} bytes")
+
+                                # 上傳到 Cloudinary
+                                upload_result = cloudinary.uploader.upload(
+                                    processed_path,
+                                    folder="line-bot-frames",
+                                    resource_type="image",
+                                    quality="auto:good",  # 自動選擇最佳品質
+                                    fetch_format="auto"  # 自動選擇最佳格式
+                                )
+                                image_url = upload_result['secure_url']
+                                app.logger.info(f"圖片已上傳到 Cloudinary：{image_url}")
+
+                                # 刪除臨時檔案
+                                os.remove(processed_path)
+                                app.logger.info(f"已刪除臨時檔案：{processed_path}")
+                            except Exception as e:
+                                app.logger.error(f"上傳圖片到 Cloudinary 失敗：{str(e)}")
+                                raise
                             
                             # 檢查圖片大小
                             file_size = os.path.getsize(processed_path)
