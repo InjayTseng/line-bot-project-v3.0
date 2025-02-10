@@ -33,7 +33,7 @@ for directory in ['static/uploads', 'static/frames']:
         app.logger.info(f"已創建目錄：{directory}")
 
 # 設定圖片路由
-@app.route('/images/<path:filename>')
+@app.route('/static/uploads/<path:filename>')
 def serve_image(filename):
     try:
         app.logger.info(f"接收到圖片請求：{filename}")
@@ -49,36 +49,25 @@ def serve_image(filename):
             return "Image not found", 404
         
         # 使用 send_from_directory 發送檔案
-        try:
-            response = send_from_directory(
-                os.path.dirname(abs_path),
-                os.path.basename(abs_path),
-                mimetype='image/jpeg',
-                as_attachment=False,
-                max_age=31536000
-            )
-            
-            # 設定額外的標頭
-            response.headers['Access-Control-Allow-Origin'] = '*'
-            response.headers['Cache-Control'] = 'public, max-age=31536000'
-            
-            app.logger.info(f"圖片發送成功，響應標頭：{response.headers}")
-            return response
-            
-        except Exception as e:
-            app.logger.error(f"發送圖片時發生錯誤：{str(e)}")
-            app.logger.error(traceback.format_exc())
-            return str(e), 500
-            
+        response = send_from_directory(
+            os.path.dirname(abs_path),
+            os.path.basename(abs_path),
+            mimetype='image/jpeg',
+            as_attachment=False,
+            max_age=31536000
+        )
+        
+        # 設定額外的標頭
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Cache-Control'] = 'public, max-age=31536000'
+        
+        app.logger.info(f"圖片發送成功，響應標頭：{response.headers}")
+        return response
+        
     except Exception as e:
         app.logger.error(f"處理圖片請求時發生錯誤：{str(e)}")
         app.logger.error(traceback.format_exc())
         return str(e), 500
-        
-    except Exception as e:
-        app.logger.error(f"提供圖片時發生錯誤：{str(e)}")
-        app.logger.error(traceback.format_exc())
-        abort(500)
 
 # 設定日誌級別
 logging.basicConfig(
@@ -113,7 +102,7 @@ app.logger.info(f"使用的基礎 URL：{BASE_URL}")
 if os.environ.get('RENDER'):
     UPLOAD_FOLDER = '/tmp/uploads'
     # 在 Render 上，圖片會通過 /images 路由提供
-    IMAGES_URL_PATH = '/images'
+    IMAGES_URL_PATH = '/static/uploads'
 else:
     UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/uploads')
     # 在本地環境，圖片通過 static 目錄提供
