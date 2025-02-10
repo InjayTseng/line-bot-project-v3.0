@@ -1,4 +1,5 @@
-from flask import Flask, request, abort
+import time
+from flask import Flask, request, abort, send_from_directory, url_for
 from linebot.v3.messaging import (
     Configuration,
     ApiClient,
@@ -20,10 +21,64 @@ import sys
 from PIL import Image
 import dotenv
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='/static', static_folder='static')
 
 # 加載環境變數
 dotenv.load_dotenv()
+
+# 確保必要的目錄存在
+for directory in ['static/uploads', 'static/frames']:
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+        app.logger.info(f"已創建目錄：{directory}")
+
+# 設定圖片路由
+@app.route('/images/<path:filename>')
+def serve_image(filename):
+    try:
+        app.logger.info(f"接收到圖片請求：{filename}")
+        app.logger.info(f"請求頭部：{request.headers}")
+        
+        # 檢查文件是否存在於 uploads 目錄
+        file_path = os.path.join('static/uploads', filename)
+        abs_path = os.path.abspath(file_path)
+        app.logger.info(f"圖片完整路徑：{abs_path}")
+        
+        if not os.path.isfile(abs_path):
+            app.logger.error(f"找不到圖片檔案：{abs_path}")
+            return "Image not found", 404
+        
+        # 使用 send_from_directory 發送檔案
+        try:
+            response = send_from_directory(
+                os.path.dirname(abs_path),
+                os.path.basename(abs_path),
+                mimetype='image/jpeg',
+                as_attachment=False,
+                max_age=31536000
+            )
+            
+            # 設定額外的標頭
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            response.headers['Cache-Control'] = 'public, max-age=31536000'
+            
+            app.logger.info(f"圖片發送成功，響應標頭：{response.headers}")
+            return response
+            
+        except Exception as e:
+            app.logger.error(f"發送圖片時發生錯誤：{str(e)}")
+            app.logger.error(traceback.format_exc())
+            return str(e), 500
+            
+    except Exception as e:
+        app.logger.error(f"處理圖片請求時發生錯誤：{str(e)}")
+        app.logger.error(traceback.format_exc())
+        return str(e), 500
+        
+    except Exception as e:
+        app.logger.error(f"提供圖片時發生錯誤：{str(e)}")
+        app.logger.error(traceback.format_exc())
+        abort(500)
 
 # 設定日誌級別
 logging.basicConfig(
@@ -34,16 +89,20 @@ logging.basicConfig(
 # 從環境變數獲取設定
 CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
 CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
+NGROK_URL = os.environ.get('NGROK_URL')
 
 if not CHANNEL_ACCESS_TOKEN or not CHANNEL_SECRET:
     raise ValueError("請設置 LINE_CHANNEL_ACCESS_TOKEN 和 LINE_CHANNEL_SECRET 環境變數")
+
+if not NGROK_URL:
+    raise ValueError("請設置 NGROK_URL 環境變數，例如：https://xxxx-xx-xxx-xxx-xx.ngrok-free.app")
 
 # 設定上傳目錄
 UPLOAD_FOLDER = 'static/uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 # 設定 ngrok URL（請替換成您的 ngrok URL）
-NGROK_URL = 'https://06e4-124-218-234-7.ngrok-free.app'
+NGROK_URL = os.environ.get('NGROK_URL')
 
 # 確保上傳目錄存在
 if not os.path.exists(UPLOAD_FOLDER):
@@ -104,10 +163,8 @@ def save_image(message_id):
 
 # 設定相框樣式對應的檔案名稱
 FRAME_FILES = {
-    '簡約風格': 'simple.png',
     '可愛風格': 'cute.png',
-    '復古風格': 'vintage.png',
-    '節日風格': 'holiday.png'
+    '復古風格': 'vintage.png'
 }
 
 def process_image_with_frame(image_filename, frame_style):
@@ -126,6 +183,9 @@ def process_image_with_frame(image_filename, frame_style):
         input_path = os.path.join(UPLOAD_FOLDER, image_filename)
         frame_path = os.path.join('static/frames', FRAME_FILES.get(frame_style, 'simple.png'))
         
+        app.logger.debug(f"處理圖片：{input_path}")
+        app.logger.debug(f"使用相框：{frame_path}")
+        
         # 檢查輸入檔案是否存在
         if not os.path.exists(input_path):
             app.logger.error(f"找不到原始圖片：{input_path}")
@@ -138,9 +198,12 @@ def process_image_with_frame(image_filename, frame_style):
             
         # 讀取原始圖片
         with Image.open(input_path) as img:
+            app.logger.debug(f"原始圖片模式：{img.mode}, 尺寸：{img.size}")
+            
             # 轉換圖片模式為 RGBA
             if img.mode != 'RGBA':
                 img = img.convert('RGBA')
+                app.logger.debug("已將圖片轉換為 RGBA 模式")
             
             # 獲取原始尺寸
             original_width, original_height = img.size
@@ -155,34 +218,82 @@ def process_image_with_frame(image_filename, frame_style):
                 target_width = 1080
                 target_height = int(original_height * (target_width / original_width))
             
+            app.logger.debug(f"調整後的目標尺寸：{target_width}x{target_height}")
+            
             # 調整圖片大小，保持原始比例
             img = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
             
             # 創建一個新的正方形畫布（1080x1080，透明背景）
             canvas = Image.new('RGBA', (1080, 1080), (0, 0, 0, 0))
+            app.logger.debug(f"創建畫布，尺寸：{canvas.size}")
             
             # 將調整後的圖片置中貼上
             paste_x = (1080 - target_width) // 2
             paste_y = (1080 - target_height) // 2
             canvas.paste(img, (paste_x, paste_y))
+            app.logger.debug(f"圖片已置中貼上，位置：({paste_x}, {paste_y})")
             
             # 讀取相框
             with Image.open(frame_path) as frame:
+                app.logger.debug(f"相框原始模式：{frame.mode}, 尺寸：{frame.size}")
+                
                 if frame.mode != 'RGBA':
                     frame = frame.convert('RGBA')
+                    app.logger.debug("已將相框轉換為 RGBA 模式")
+                
+                # 調整相框大小以符合畫布大小
+                frame = frame.resize((1080, 1080), Image.Resampling.LANCZOS)
+                app.logger.debug(f"調整後的相框尺寸：{frame.size}")
                 
                 # 合成圖片
-                result = Image.alpha_composite(canvas, frame)
+                try:
+                    result = Image.alpha_composite(canvas, frame)
+                    app.logger.debug("圖片合成成功")
+                except ValueError as ve:
+                    app.logger.error(f"圖片合成失敗：{str(ve)}")
+                    app.logger.error(f"畫布模式：{canvas.mode}, 尺寸：{canvas.size}")
+                    app.logger.error(f"相框模式：{frame.mode}, 尺寸：{frame.size}")
+                    raise
                 
                 # 生成輸出檔名
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 output_filename = f"processed_{timestamp}_{image_filename}"
                 output_path = os.path.join(UPLOAD_FOLDER, output_filename)
                 
-                # 儲存處理後的圖片，使用高品質設定
-                result = result.convert('RGB')  # LINE 不支援 RGBA
-                result.save(output_path, 'JPEG', quality=95)
-                app.logger.info(f"圖片處理完成：{output_filename}")
+                # 轉換為 RGB
+                result = result.convert('RGB')
+                
+                # 調整圖片尺寸
+                target_size = (800, 800)  # 使用更小的尺寸
+                result.thumbnail(target_size, Image.Resampling.LANCZOS)
+                
+                # 確保圖片小於 200KB
+                max_size_bytes = 200000  # 200KB
+                quality = 80  # 降低品質
+                
+                # 記錄原始圖片資訊
+                app.logger.info(f"原始圖片尺寸：{result.size}")
+                
+                # 使用自適應品質來控制檔案大小
+                while quality > 60:  # 不要讓品質太低
+                    # 先在記憶體中測試
+                    from io import BytesIO
+                    temp_buffer = BytesIO()
+                    result.save(temp_buffer, 'JPEG', quality=quality)
+                    size = temp_buffer.tell()
+                    
+                    if size <= max_size_bytes:
+                        break
+                    
+                    quality -= 5
+                    app.logger.info(f"調整品質至：{quality}, 當前大小：{size} bytes")
+                
+                # 儲存最終的圖片
+                result.save(output_path, 'JPEG', quality=quality)
+                
+                # 確認最終檔案大小
+                final_size = os.path.getsize(output_path)
+                app.logger.info(f"圖片處理完成：{output_filename}, 最終大小：{final_size} bytes, 品質：{quality}")
                 
                 return output_filename
             
@@ -194,10 +305,8 @@ def process_image_with_frame(image_filename, frame_style):
 # 用戶狀態追蹤
 user_states = {}  # 用來存儲用戶的狀態
 FRAME_STYLES = {
-    '1': '簡約風格',
-    '2': '可愛風格',
-    '3': '復古風格',
-    '4': '節日風格'
+    '1': '可愛風格',
+    '2': '復古風格'
 }
 
 @handler.add(MessageEvent, message=TextMessageContent)
@@ -220,25 +329,116 @@ def handle_message(event):
                 if image_filename:
                     processed_filename = process_image_with_frame(image_filename, frame_style)
                     if processed_filename:
-                        # 構建圖片的完整 URL（使用 HTTPS）
-                        image_url = f"{NGROK_URL}/static/uploads/{processed_filename}"
-                        app.logger.info(f"處理後的圖片 URL：{image_url}")
-                        
-                        # 回傳文字訊息和圖片
-                        with ApiClient(configuration) as api_client:
-                            line_bot_api = MessagingApi(api_client)
-                            line_bot_api.reply_message_with_http_info(
-                                ReplyMessageRequest(
-                                    reply_token=event.reply_token,
-                                    messages=[
-                                        TextMessage(text=f"您的照片已處理完成！\n框架樣式：{frame_style}"),
-                                        ImageMessage(
-                                            originalContentUrl=image_url,
-                                            previewImageUrl=image_url
+                        try:
+                            # 檢查處理後的圖片路徑
+                            processed_path = os.path.join(UPLOAD_FOLDER, processed_filename)
+                            app.logger.info(f"處理後的圖片路徑：{processed_path}")
+                            
+                            # 檢查圖片是否存在
+                            if not os.path.exists(processed_path):
+                                app.logger.error(f"找不到處理後的圖片：{processed_path}")
+                                raise Exception("圖片處理失敗")
+                            
+                            # 構建圖片的完整 URL
+                            image_url = f"{NGROK_URL}/static/uploads/{processed_filename}"
+                            app.logger.info(f"處理後的圖片 URL：{image_url}")
+                            
+                            # 確保 URL 是 HTTPS
+                            if not image_url.startswith('https'):
+                                app.logger.error(f"URL 必須是 HTTPS: {image_url}")
+                                raise ValueError("URL must be HTTPS")
+                            
+                            # 檢查圖片大小
+                            file_size = os.path.getsize(processed_path)
+                            app.logger.info(f"處理後的圖片大小：{file_size} bytes")
+                            
+                            # 如果圖片太大，再次處理
+                            if file_size > 200000:  # 如果大於 200KB
+                                app.logger.info("圖片太大，再次處理")
+                                with Image.open(processed_path) as img:
+                                    img = img.convert('RGB')
+                                    img.thumbnail((600, 600))
+                                    img.save(processed_path, 'JPEG', quality=70, optimize=True)
+                                file_size = os.path.getsize(processed_path)
+                                app.logger.info(f"再次處理後的圖片大小：{file_size} bytes")
+                            
+                            # 只檢查本地檔案是否存在和大小
+                            if not os.path.exists(processed_path):
+                                app.logger.error(f"找不到處理後的圖片：{processed_path}")
+                                raise Exception("圖片處理失敗")
+                            
+                            # 檢查圖片大小
+                            file_size = os.path.getsize(processed_path)
+                            app.logger.info(f"圖片大小：{file_size} bytes")
+
+                            # 檢查圖片檔案路徑
+                            processed_path = os.path.join(UPLOAD_FOLDER, processed_filename)
+                            app.logger.info(f"處理後的圖片路徑：{processed_path}")
+                            
+                            # 檢查圖片大小
+                            file_size = os.path.getsize(processed_path)
+                            app.logger.info(f"圖片大小：{file_size} bytes")
+                            
+                            # 如果圖片太大，嘗試再次處理
+                            if file_size > 300000:  # 如果大於 300KB
+                                app.logger.info("圖片太大，嘗試再次處理")
+                                with Image.open(processed_path) as img:
+                                    img = img.convert('RGB')
+                                    # 降低尺寸
+                                    img.thumbnail((600, 600))
+                                    # 降低品質
+                                    img.save(processed_path, 'JPEG', quality=70, optimize=True)
+                                file_size = os.path.getsize(processed_path)
+                                app.logger.info(f"重新處理後的圖片大小：{file_size} bytes")
+                            
+                            # 檢查圖片 URL 是否可訪問
+                            try:
+                                # 使用專用的圖片路由
+                                image_url = f"{NGROK_URL}/images/{processed_filename}"
+                                app.logger.info(f"圖片 URL：{image_url}")
+                                
+                                response = requests.head(image_url)
+                                app.logger.info(f"圖片 URL 響應狀態碼：{response.status_code}")
+                                app.logger.info(f"圖片 URL 響應標頭：{response.headers}")
+                                
+                                if response.status_code != 200:
+                                    raise Exception(f"圖片 URL 無法訪問，狀態碼：{response.status_code}")
+                                
+                                # 只發送圖片訊息
+                                messages = [
+                                    ImageMessage(
+                                        originalContentUrl=image_url,
+                                        previewImageUrl=image_url
+                                    )
+                                ]
+                                
+                                app.logger.info("已創建 LINE 圖片訊息")
+                                
+                                with ApiClient(configuration) as api_client:
+                                    line_bot_api = MessagingApi(api_client)
+                                    response = line_bot_api.reply_message_with_http_info(
+                                        ReplyMessageRequest(
+                                            reply_token=event.reply_token,
+                                            messages=messages
                                         )
-                                    ]
-                                )
-                            )
+                                    )
+                                    app.logger.info(f"訊息發送成功，響應：{response}")
+                                    
+                            except Exception as e:
+                                app.logger.error(f"發送圖片訊息時發生錯誤：{str(e)}")
+                                # 如果發生錯誤，發送錯誤訊息
+                                with ApiClient(configuration) as api_client:
+                                    line_bot_api = MessagingApi(api_client)
+                                    line_bot_api.reply_message_with_http_info(
+                                        ReplyMessageRequest(
+                                            reply_token=event.reply_token,
+                                            messages=[TextMessage(text="圖片處理失敗，請再試一次。")]
+                                        )
+                                    )
+                        except Exception as e:
+                            app.logger.error(f"發送圖片訊息失敗：{str(e)}")
+                            app.logger.error(traceback.format_exc())
+                            raise
                         app.logger.info(f"用戶 {user_id} 的圖片處理完成：{processed_filename}")
                         return
                     else:
@@ -291,7 +491,7 @@ def handle_image_message(event):
         filename = save_image(event.message.id)
         
         if filename:
-            reply_text = f"已收到您的照片！\n請選擇要使用的相框樣式：\n1️⃣ 簡約風格\n2️⃣ 可愛風格\n3️⃣ 復古風格\n4️⃣ 節日風格"
+            reply_text = f"已收到您的照片！\n請選擇要使用的相框樣式：\n1️⃣ 可愛風格\n2️⃣ 復古風格"
             app.logger.info("圖片處理成功，準備回覆選項訊息")
             
             # 記錄用戶狀態
@@ -356,5 +556,8 @@ def callback():
         return str(e), 500
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8001))
-    app.run(host="0.0.0.0", port=port)
+    # 設定更詳細的日誌記錄
+    logging.getLogger('linebot').setLevel(logging.DEBUG)
+    
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=port, debug=True)
