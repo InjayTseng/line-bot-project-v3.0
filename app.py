@@ -98,12 +98,16 @@ if os.environ.get('RENDER'):
     # 在 Render 環境中，使用 RENDER_EXTERNAL_URL
     BASE_URL = os.environ.get('RENDER_EXTERNAL_URL')
     if not BASE_URL:
-        raise ValueError("在 Render 環境中找不到 RENDER_EXTERNAL_URL")
+        app.logger.warning("在 Render 環境中找不到 RENDER_EXTERNAL_URL，使用備用網址")
+        # 使用備用網址
+        BASE_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}"
 else:
     # 在本地開發環境中，使用 NGROK_URL
     BASE_URL = os.environ.get('NGROK_URL')
     if not BASE_URL:
         raise ValueError("在本地環境中請設置 NGROK_URL，例如：https://xxxx-xx-xxx-xxx-xx.ngrok-free.app")
+
+app.logger.info(f"使用的基礎 URL：{BASE_URL}")
 
 # 設定上傳目錄
 # 在 Render 上使用臨時資料夾
@@ -443,8 +447,18 @@ def handle_message(event):
                             # 檢查圖片 URL 是否可訪問
                             try:
                                 # 使用專用的圖片路由
-                                image_url = f"{BASE_URL}/images/{processed_filename}"
+                                if os.environ.get('RENDER'):
+                                    # 在 Render 環境中，使用完整的 URL
+                                    image_url = f"{BASE_URL}/images/{processed_filename}"
+                                else:
+                                    # 在本地環境中，使用 NGROK_URL
+                                    image_url = f"{BASE_URL}/images/{processed_filename}"
+                                
                                 app.logger.info(f"圖片 URL：{image_url}")
+                                
+                                # 確保 URL 是 HTTPS
+                                if not image_url.startswith('https://'):
+                                    raise ValueError(f"URL 必須是 HTTPS: {image_url}")
                                 
                                 response = requests.head(image_url)
                                 app.logger.info(f"圖片 URL 響應狀態碼：{response.status_code}")
