@@ -413,135 +413,78 @@ def handle_message(event):
                                 app.logger.error(f"上傳圖片到 Cloudinary 失敗：{str(e)}")
                                 raise
                             
-                            # 檢查圖片大小
-                            file_size = os.path.getsize(processed_path)
-                            app.logger.info(f"處理後的圖片大小：{file_size} bytes")
-                            
-                            # 如果圖片太大，再次處理
-                            if file_size > 200000:  # 如果大於 200KB
-                                app.logger.info("圖片太大，再次處理")
-                                with Image.open(processed_path) as img:
-                                    img = img.convert('RGB')
-                                    img.thumbnail((600, 600))
-                                    img.save(processed_path, 'JPEG', quality=70, optimize=True)
-                                file_size = os.path.getsize(processed_path)
-                                app.logger.info(f"再次處理後的圖片大小：{file_size} bytes")
-                            
-                            # 只檢查本地檔案是否存在和大小
-                            if not os.path.exists(processed_path):
-                                app.logger.error(f"找不到處理後的圖片：{processed_path}")
-                                raise Exception("圖片處理失敗")
-                            
-                            # 檢查圖片大小
-                            file_size = os.path.getsize(processed_path)
-                            app.logger.info(f"圖片大小：{file_size} bytes")
-
-                            # 檢查圖片檔案路徑
-                            processed_path = os.path.join(UPLOAD_FOLDER, processed_filename)
-                            app.logger.info(f"處理後的圖片路徑：{processed_path}")
-                            
-                            # 檢查圖片大小
-                            file_size = os.path.getsize(processed_path)
-                            app.logger.info(f"圖片大小：{file_size} bytes")
-                            
-                            # 如果圖片太大，嘗試再次處理
-                            if file_size > 300000:  # 如果大於 300KB
-                                app.logger.info("圖片太大，嘗試再次處理")
-                                with Image.open(processed_path) as img:
-                                    img = img.convert('RGB')
-                                    # 降低尺寸
-                                    img.thumbnail((600, 600))
-                                    # 降低品質
-                                    img.save(processed_path, 'JPEG', quality=70, optimize=True)
-                                file_size = os.path.getsize(processed_path)
-                                app.logger.info(f"重新處理後的圖片大小：{file_size} bytes")
-                            
-                            # 檢查圖片 URL 是否可訪問
+                            # 發送圖片訊息
                             try:
-                                # 使用專用的圖片路由
-                                # 根據環境使用對應的圖片 URL 路徑
-                                image_url = f"{BASE_URL}{IMAGES_URL_PATH}/{processed_filename}"
-                                
-                                app.logger.info(f"基礎 URL：{BASE_URL}")
-                                app.logger.info(f"圖片 URL 路徑：{IMAGES_URL_PATH}")
-                                app.logger.info(f"圖片檔名：{processed_filename}")
-                                app.logger.info(f"完整圖片 URL：{image_url}")
-                                
-                                # 確保 URL 是 HTTPS
-                                if not image_url.startswith('https://'):
-                                    app.logger.error(f"URL 不是 HTTPS: {image_url}")
-                                    raise ValueError(f"URL 必須是 HTTPS: {image_url}")
-                                
-                                response = requests.head(image_url)
-                                app.logger.info(f"圖片 URL 響應狀態碼：{response.status_code}")
-                                app.logger.info(f"圖片 URL 響應標頭：{response.headers}")
-                                
-                                if response.status_code != 200:
-                                    raise Exception(f"圖片 URL 無法訪問，狀態碼：{response.status_code}")
-                                
-                                # 只發送圖片訊息
-                                messages = [
-                                    ImageMessage(
-                                        originalContentUrl=image_url,
-                                        previewImageUrl=image_url
-                                    )
-                                ]
-                                
-                                app.logger.info("已創建 LINE 圖片訊息")
-                                
-                                with ApiClient(configuration) as api_client:
-                                    line_bot_api = MessagingApi(api_client)
-                                    response = line_bot_api.reply_message_with_http_info(
-                                        ReplyMessageRequest(
-                                            reply_token=event.reply_token,
-                                            messages=messages
-                                        )
-                                    )
-                                    app.logger.info(f"訊息發送成功，響應：{response}")
-                                    
-                                    # 設定延遲刪除的時間，確保 LINE 有足夠時間獲取圖片
-                                    def delayed_cleanup(original_path, processed_path, delay_seconds=300):  # 5 分鐘後刪除
-                                        try:
-                                            time.sleep(delay_seconds)
-                                            # 刪除原始圖片
-                                            if os.path.exists(original_path):
-                                                os.remove(original_path)
-                                                app.logger.info(f"原始圖片已刪除：{original_path}")
-                                            
-                                            # 刪除處理後的圖片
-                                            if os.path.exists(processed_path):
-                                                os.remove(processed_path)
-                                                app.logger.info(f"處理後的圖片已刪除：{processed_path}")
-                                        except Exception as e:
-                                            app.logger.error(f"刪除圖片時發生錯誤：{str(e)}")
-                                    
-                                    # 啟動一個新的執行緒來處理延遲刪除
-                                    import threading
-                                    original_path = os.path.join(UPLOAD_FOLDER, image_filename)
-                                    cleanup_thread = threading.Thread(
-                                        target=delayed_cleanup,
-                                        args=(original_path, processed_path),
-                                        daemon=True
-                                    )
-                                    cleanup_thread.start()
-                                    app.logger.info("已啟動延遲刪除執行緒")
-                                    
-                            except Exception as e:
-                                app.logger.error(f"發送圖片訊息時發生錯誤：{str(e)}")
-                                # 如果發生錯誤，發送錯誤訊息
                                 with ApiClient(configuration) as api_client:
                                     line_bot_api = MessagingApi(api_client)
                                     line_bot_api.reply_message_with_http_info(
                                         ReplyMessageRequest(
                                             reply_token=event.reply_token,
-                                            messages=[TextMessage(text="圖片處理失敗，請再試一次。")]
+                                            messages=[
+                                                ImageMessage(
+                                                    original_content_url=image_url,
+                                                    preview_image_url=image_url
+                                                )
+                                            ]
                                         )
                                     )
+                                app.logger.info(f"圖片訊息發送成功，圖片 URL：{image_url}")
+                            except Exception as e:
+                                app.logger.error(f"發送圖片訊息失敗：{str(e)}")
+                                app.logger.error(traceback.format_exc())
+                                
+                                # 清理臨時檔案
+                                if os.path.exists(processed_path):
+                                    try:
+                                        os.remove(processed_path)
+                                        app.logger.info(f"清理臨時檔案：{processed_path}")
+                                    except:
+                                        pass
+                                
+                                # 清理原始圖片
+                                original_path = os.path.join(UPLOAD_FOLDER, image_filename)
+                                if os.path.exists(original_path):
+                                    try:
+                                        os.remove(original_path)
+                                        app.logger.info(f"清理原始圖片：{original_path}")
+                                    except:
+                                        pass
+                                
+                                # 清理使用者狀態
+                                if user_id in user_states:
+                                    del user_states[user_id]
+                                    app.logger.info(f"已清理使用者狀態：{user_id}")
+
+                                # 嘗試發送錯誤訊息
+                                try:
+                                    with ApiClient(configuration) as api_client:
+                                        line_bot_api = MessagingApi(api_client)
+                                        line_bot_api.reply_message_with_http_info(
+                                            ReplyMessageRequest(
+                                                reply_token=event.reply_token,
+                                                messages=[
+                                                    TextMessage(text="抱歉，處理圖片時發生錯誤。")
+                                                ]
+                                            )
+                                        )
+                                except Exception as inner_e:
+                                    app.logger.error(f"發送錯誤訊息也失敗了：{str(inner_e)}")
                         except Exception as e:
-                            app.logger.error(f"發送圖片訊息失敗：{str(e)}")
+                            app.logger.error(f"處理圖片時發生錯誤：{str(e)}")
                             app.logger.error(traceback.format_exc())
-                            raise
-                        app.logger.info(f"用戶 {user_id} 的圖片處理完成：{processed_filename}")
+                            try:
+                                with ApiClient(configuration) as api_client:
+                                    line_bot_api = MessagingApi(api_client)
+                                    line_bot_api.reply_message_with_http_info(
+                                        ReplyMessageRequest(
+                                            reply_token=event.reply_token,
+                                            messages=[
+                                                TextMessage(text="抱歉，處理圖片時發生錯誤。")
+                                            ]
+                                        )
+                                    )
+                            except Exception as inner_e:
+                                app.logger.error(f"發送錯誤訊息也失敗了：{str(inner_e)}")
                         return
                     else:
                         response_message = "很抱歉，圖片處理失敗，請重新上傳照片。"

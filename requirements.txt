@@ -1,7 +1,5 @@
+# Web Framework
 Flask==3.1.0
-line-bot-sdk==3.14.5
-python-dotenv==1.0.1
-Pillow==10.2.0
 gunicorn==21.2.0
 Werkzeug==3.1.3
 click==8.1.8
@@ -9,4 +7,17 @@ itsdangerous==2.2.0
 Jinja2==3.1.5
 MarkupSafe==3.0.2
 packaging==24.0
+
+# LINE Bot SDK
+line-bot-sdk==3.14.5
+
+# Image Processing
+Pillow==10.2.0
+cloudinary==1.36.0
+
+# HTTP Client
+requests==2.31.0
+
+# Environment Variables
+python-dotenv==1.0.1
 cloudinary==1.42.0
