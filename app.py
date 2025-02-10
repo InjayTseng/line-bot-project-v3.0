@@ -89,13 +89,21 @@ logging.basicConfig(
 # 從環境變數獲取設定
 CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
 CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
-NGROK_URL = os.environ.get('NGROK_URL')
 
 if not CHANNEL_ACCESS_TOKEN or not CHANNEL_SECRET:
     raise ValueError("請設置 LINE_CHANNEL_ACCESS_TOKEN 和 LINE_CHANNEL_SECRET 環境變數")
 
-if not NGROK_URL:
-    raise ValueError("請設置 NGROK_URL 環境變數，例如：https://xxxx-xx-xxx-xxx-xx.ngrok-free.app")
+# 判斷環境並設定基礎 URL
+if os.environ.get('RENDER'):
+    # 在 Render 環境中，使用 RENDER_EXTERNAL_URL
+    BASE_URL = os.environ.get('RENDER_EXTERNAL_URL')
+    if not BASE_URL:
+        raise ValueError("在 Render 環境中找不到 RENDER_EXTERNAL_URL")
+else:
+    # 在本地開發環境中，使用 NGROK_URL
+    BASE_URL = os.environ.get('NGROK_URL')
+    if not BASE_URL:
+        raise ValueError("在本地環境中請設置 NGROK_URL，例如：https://xxxx-xx-xxx-xxx-xx.ngrok-free.app")
 
 # 設定上傳目錄
 # 在 Render 上使用臨時資料夾
@@ -435,7 +443,7 @@ def handle_message(event):
                             # 檢查圖片 URL 是否可訪問
                             try:
                                 # 使用專用的圖片路由
-                                image_url = f"{NGROK_URL}/images/{processed_filename}"
+                                image_url = f"{BASE_URL}/images/{processed_filename}"
                                 app.logger.info(f"圖片 URL：{image_url}")
                                 
                                 response = requests.head(image_url)
