@@ -1,0 +1,662 @@
+{
+	"info": {
+		"_postman_id": "22d503e5-54b1-494c-bd50-faf0cc444fd0",
+		"name": "Epson Connect API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Device authentication",
+			"request": {
+				"auth": {
+					"type": "basic",
+					"basic": [
+						{
+							"key": "password",
+							"value": "Client Secret",
+							"type": "string"
+						},
+						{
+							"key": "username",
+							"value": "Client ID",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"type": "text",
+						"value": "application/x-www-form-urlencoded; charset=utf-8"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "grant_type=password&username=device email address&password="
+				},
+				"url": {
+					"raw": "https://xxxx.xxxxx.xxx/api/1/printing/oauth2/auth/token?subject=printer",
+					"protocol": "https",
+					"host": [
+						"xxxx",
+						"xxxxx",
+						"xxx"
+					],
+					"path": [
+						"api",
+						"1",
+						"printing",
+						"oauth2",
+						"auth",
+						"token"
+					],
+					"query": [
+						{
+							"key": "subject",
+							"value": "printer"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "1.1. Reissue access token",
+			"request": {
+				"auth": {
+					"type": "basic",
+					"basic": [
+						{
+							"key": "password",
+							"value": "Client Secret",
+							"type": "string"
+						},
+						{
+							"key": "username",
+							"value": "Client ID",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/x-www-form-urlencoded; charset=utf-8",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "grant_type=refresh_token&refresh_token=refresh_token"
+				},
+				"url": {
+					"raw": "https://xxxx.xxxxx.xxx/api/1/printing/oauth2/auth/token?subject=printer",
+					"protocol": "https",
+					"host": [
+						"xxxx",
+						"xxxxx",
+						"xxx"
+					],
+					"path": [
+						"api",
+						"1",
+						"printing",
+						"oauth2",
+						"auth",
+						"token"
+					],
+					"query": [
+						{
+							"key": "subject",
+							"value": "printer"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "2. Get device print capabilities",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "Access token",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://xxxx.xxxxx.xxx/api/1/printing/printers/Device ID/capability/document",
+					"protocol": "https",
+					"host": [
+						"xxxx",
+						"xxxxx",
+						"xxx"
+					],
+					"path": [
+						"api",
+						"1",
+						"printing",
+						"printers",
+						"Device ID",
+						"capability",
+						"document"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "3. Create print job",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "Access token",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"type": "text",
+						"value": "application/json; charset=utf-8"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"job_name\" : \"Job Name\",\r\n    \"print_mode\" : \"document\",\r\n    \"print_setting\" : {\r\n        \"media_size\" : \"ms_a4\",\r\n        \"media_type\" : \"mt_plainpaper\",\r\n        \"borderless\" : false,\r\n        \"print_quality\" : \"normal\",\r\n        \"source\" : \"auto\",\r\n        \"color_mode\" : \"color\",\r\n        \"reverse_order\" : false,\r\n        \"copies\" : 1,\r\n        \"collate\" : false\r\n    }\r\n}"
+				},
+				"url": {
+					"raw": "https://xxxx.xxxxx.xxx/api/1/printing/printers/Device ID/jobs",
+					"protocol": "https",
+					"host": [
+						"xxxx",
+						"xxxxx",
+						"xxx"
+					],
+					"path": [
+						"api",
+						"1",
+						"printing",
+						"printers",
+						"Device ID",
+						"jobs"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "4. Upload print file",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "Access token",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Length",
+						"value": "Specify the size of the outgoing file.",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/octet-stream",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "file",
+					"file": {
+						"src": ""
+					}
+				},
+				"url": {
+					"raw": "Upload URI&File=1.pdf",
+					"host": [
+						"Upload URI&File=1",
+						"pdf"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "5. Execute print",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "Access token",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json; charset=utf-8",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "https://xxxx.xxxxx.xxx/api/1/printing/printers/Device ID/jobs/Print job ID/print",
+					"protocol": "https",
+					"host": [
+						"xxxx",
+						"xxxxx",
+						"xxx"
+					],
+					"path": [
+						"api",
+						"1",
+						"printing",
+						"printers",
+						"Device ID",
+						"jobs",
+						"Print job ID",
+						"print"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "6. Cancel print",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "Access token",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json; charset=utf-8",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"operated_by\" : \"user\"\r\n}\r\n"
+				},
+				"url": {
+					"raw": "https://xxxx.xxxxx.xxx/api/1/printing/printers/Device ID/jobs/Print job ID/cancel",
+					"protocol": "https",
+					"host": [
+						"xxxx",
+						"xxxxx",
+						"xxx"
+					],
+					"path": [
+						"api",
+						"1",
+						"printing",
+						"printers",
+						"Device ID",
+						"jobs",
+						"Print job ID",
+						"cancel"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "7. Get print job information",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "Access token",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://xxxx.xxxxx.xxx/api/1/printing/printers/Device ID/jobs/Print job ID",
+					"protocol": "https",
+					"host": [
+						"xxxx",
+						"xxxxx",
+						"xxx"
+					],
+					"path": [
+						"api",
+						"1",
+						"printing",
+						"printers",
+						"Device ID",
+						"jobs",
+						"Print job ID"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "8. Get device information",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "Access token",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://xxxx.xxxxx.xxx/api/1/printing/printers/Device ID",
+					"protocol": "https",
+					"host": [
+						"xxxx",
+						"xxxxx",
+						"xxx"
+					],
+					"path": [
+						"api",
+						"1",
+						"printing",
+						"printers",
+						"Device ID"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "9. Cancel device authentication",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "Access token",
+							"type": "string"
+						}
+					]
+				},
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "https://xxxx.xxxxx.xxx/api/1/printing/printers/Device ID",
+					"protocol": "https",
+					"host": [
+						"xxxx",
+						"xxxxx",
+						"xxx"
+					],
+					"path": [
+						"api",
+						"1",
+						"printing",
+						"printers",
+						"Device ID"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "10. Notification setting",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "Access token",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json; charset=utf-8",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"notification\":\"true\",\r\n    \"callback_uri\":\"Callback URI\"\r\n}"
+				},
+				"url": {
+					"raw": "https://xxxx.xxxxx.xxx/api/1/printing/printers/Device ID/settings/notification",
+					"protocol": "https",
+					"host": [
+						"xxxx",
+						"xxxxx",
+						"xxx"
+					],
+					"path": [
+						"api",
+						"1",
+						"printing",
+						"printers",
+						"Device ID",
+						"settings",
+						"notification"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "11. Get scan destination list",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "Access token",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "https://xxxx.xxxxx.xxx/api/1/scanning/scanners/Device ID/destinations",
+					"protocol": "https",
+					"host": [
+						"xxxx",
+						"xxxxx",
+						"xxx"
+					],
+					"path": [
+						"api",
+						"1",
+						"scanning",
+						"scanners",
+						"Device ID",
+						"destinations"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "12. Register scan destination",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "Access token",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json; charset=utf-8",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"alias_name\" : \"Alias name\",\n\t\"type\" : \"url\",\n\t\"destination\" : \"Desination URI\"\n}"
+				},
+				"url": {
+					"raw": "https://xxxx.xxxxx.xxx/api/1/scanning/scanners/Device ID/destinations",
+					"protocol": "https",
+					"host": [
+						"xxxx",
+						"xxxxx",
+						"xxx"
+					],
+					"path": [
+						"api",
+						"1",
+						"scanning",
+						"scanners",
+						"Device ID",
+						"destinations"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "13. Update scan destination",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "Access token",
+							"type": "string"
+						}
+					]
+				},
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json; charset=utf-8",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n\t\"id\":\"Destination ID\",\r\n\t\"alias_name\" : \"Alias name\",\r\n\t\"type\" : \"url\",\r\n\t\"destination\" : \"Desination URI\"\r\n}"
+				},
+				"url": {
+					"raw": "https://xxxx.xxxxx.xxx/api/1/scanning/scanners/Device ID/destinations",
+					"protocol": "https",
+					"host": [
+						"xxxx",
+						"xxxxx",
+						"xxx"
+					],
+					"path": [
+						"api",
+						"1",
+						"scanning",
+						"scanners",
+						"Device ID",
+						"destinations"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "14. Delete scan destination",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "Access token",
+							"type": "string"
+						}
+					]
+				},
+				"method": "DELETE",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json; charset=utf-8",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"id\":\"Destination ID\"\n}"
+				},
+				"url": {
+					"raw": "https://xxxx.xxxxx.xxx/api/1/scanning/scanners/Device ID/destinations",
+					"protocol": "https",
+					"host": [
+						"xxxx",
+						"xxxxx",
+						"xxx"
+					],
+					"path": [
+						"api",
+						"1",
+						"scanning",
+						"scanners",
+						"Device ID",
+						"destinations"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"protocolProfileBehavior": {}
+}

@@ -12,6 +12,12 @@ CLOUDINARY_CLOUD_NAME = os.getenv('CLOUDINARY_CLOUD_NAME', None)
 CLOUDINARY_API_KEY = os.getenv('CLOUDINARY_API_KEY', None)
 CLOUDINARY_API_SECRET = os.getenv('CLOUDINARY_API_SECRET', None)
 
+# 印表機設定
+PRINTER_HOST = os.getenv('PRINTER_HOST', None)
+PRINTER_CLIENT_ID = os.getenv('PRINTER_CLIENT_ID', None)
+PRINTER_SECRET = os.getenv('PRINTER_SECRET', None)
+PRINTER_EMAIL = os.getenv('PRINTER_EMAIL', None)
+
 # 應用程式設定
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'tmp', 'uploads')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
