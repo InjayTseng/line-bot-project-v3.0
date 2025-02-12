@@ -37,6 +37,15 @@ class LineService:
             logger.error(f"發送圖片訊息失敗：{str(e)}")
             raise
 
+    def reply_message(self, reply_token, messages):
+        """發送多個訊息"""
+        try:
+            self.line_bot_api.reply_message(reply_token, messages)
+            logger.info("多個訊息發送成功")
+        except Exception as e:
+            logger.error(f"發送多個訊息失敗：{str(e)}")
+            raise
+
     def get_message_content(self, message_id):
         """獲取訊息內容"""
         try:

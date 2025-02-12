@@ -12,6 +12,30 @@
 - 使用 Cloudinary 進行圖片存儲和處理
 - 模組化的程式架構，易於維護和擴展
 
+## 使用流程
+
+1. 初次對話：
+   - 用戶：發送任何文字訊息
+   - 機器人：「歡迎使用相片列印服務！請上傳一張您想要處理的圖片。」
+
+2. 上傳圖片：
+   - 用戶：上傳一張圖片
+   - 機器人：「已收到您的圖片！請選擇想要的相框風格：
+     1️⃣ 可愛風格
+     2️⃣ 復古風格」
+
+3. 選擇相框：
+   - 用戶：點選數字選項或輸入數字(1或2)
+   - 機器人：「處理中...」
+   
+4. 完成處理：
+   - 機器人：回傳處理完成的圖片
+   - 機器人：「您的照片已處理完成！如果想要繼續處理其他照片，請直接上傳新的圖片。」
+
+5. 重新開始：
+   - 用戶可以直接上傳新的圖片重新開始處理流程
+   - 或發送任何文字訊息獲取使用說明
+
 ## 已完成功能
 
 - [x] 基本的 LINE Bot 設定和連接
@@ -60,12 +84,29 @@
    pip install -r requirements.txt
    ```
 
-2. 本地開發：
+2. 啟動本地服務：
+   開啟兩個終端機視窗，分別執行以下指令：
+
+   終端機 1 - 啟動 Flask 服務：
    ```bash
    python run.py
    ```
+   這會在本地啟動 Flask 服務器，預設在 port 5000
 
-3. 部署到 Render.com：
+   終端機 2 - 啟動 ngrok：
+   ```bash
+   ./ngrok http 5000
+   ```
+   這會創建一個公開的 URL，讓 LINE 平台能夠連接到您的本地服務
+
+3. 設定 LINE Bot Webhook：
+   - 複製 ngrok 提供的 HTTPS URL（例如：https://xxxx-xxx-xxx-xxx-xxx.ngrok.io）
+   - 在 LINE Developers Console 中設定 Webhook URL
+   - 將 ngrok URL + '/callback' 設為 Webhook URL
+     例如：https://xxxx-xxx-xxx-xxx-xxx.ngrok.io/callback
+   - 確保 Webhook 的「Use webhook」選項已開啟
+
+4. 部署到 Render.com（選擇性）：
    - 使用 `render.yaml` 進行設定
    - 確保所有環境變數都已正確設置
 

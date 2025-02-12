@@ -1,6 +1,7 @@
 import os
 import logging
 from datetime import datetime
+from linebot.models import ImageSendMessage, TextSendMessage
 from src.config import settings
 from src.services.line_service import LineService
 from src.services.image_service import ImageService
@@ -57,8 +58,17 @@ class MessageHandler:
                     del self.user_states[user_id]
                     logger.info(f"已清理使用者狀態：{user_id}")
 
-                    # 發送處理後的圖片
-                    self.line_service.reply_image(event.reply_token, cloudinary_url)
+                    # 發送處理後的圖片和完成訊息
+                    self.line_service.reply_message(
+                        event.reply_token,
+                        [
+                            ImageSendMessage(
+                                original_content_url=cloudinary_url,
+                                preview_image_url=cloudinary_url
+                            ),
+                            TextSendMessage(text="您的照片已處理完成！如果想要繼續處理其他照片，請直接上傳新的圖片。")
+                        ]
+                    )
 
                 except Exception as e:
                     logger.error(f"處理圖片時發生錯誤：{str(e)}")
