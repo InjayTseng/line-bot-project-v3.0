@@ -199,16 +199,16 @@ class PrintService:
                 'Accept': 'application/json;charset=utf-8'
             }
 
-            print_uri = f'{self.base_url}/printers/{self._subject_id}/jobs/{job_id}/print'
+            print_uri = f'{self.base_url}/printers/{self._subject_id}/jobs/{job_id}/print?subject=printer'
             logger.debug(f"發送執行列印請求到: {print_uri}")
 
             async with aiohttp.ClientSession() as session:
-                data = ''
+                data = json.dumps({})
                 headers['Content-Type'] = 'application/json; charset=utf-8'
                 async with session.post(
                     print_uri,
                     headers=headers,
-                    data=data.encode('utf-8')
+                    data=data
                 ) as response:
                     response_text = await response.text()
                     logger.debug(f"回應狀態: {response.status}")
