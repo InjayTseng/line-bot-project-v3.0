@@ -86,7 +86,7 @@ class PrintService:
         """初始認證，獲取 access_token 和 device_id"""
         return await self.authenticate_device()
 
-    async def create_print_job(self):
+    async def create_print_job(self, print_settings=None):
         """創建列印任務"""
         try:
             if not self._access_token:
@@ -98,20 +98,27 @@ class PrintService:
                 'Accept': 'application/json;charset=utf-8'
             }
 
+            # 預設的列印設定
+            default_settings = {
+                'media_size': 'ms_a4',
+                'media_type': 'mt_plainpaper',
+                'borderless': False,
+                'print_quality': 'normal',
+                'source': 'auto',
+                'color_mode': 'color',
+                'reverse_order': False,
+                'copies': 1,
+                'collate': False
+            }
+
+            # 如果有提供自定義設定，則合併
+            if print_settings:
+                default_settings.update(print_settings)
+
             data = {
                 'job_name': 'LINE Bot Print Job',
                 'print_mode': 'document',  # 使用 document 模式
-                'print_setting': {
-                    'media_size': 'ms_a4',
-                    'media_type': 'mt_plainpaper',
-                    'borderless': False,
-                    'print_quality': 'normal',
-                    'source': 'auto',
-                    'color_mode': 'color',
-                    'reverse_order': False,
-                    'copies': 1,
-                    'collate': False
-                }
+                'print_setting': default_settings
             }
 
             job_uri = f'{self.base_url}/printers/{self._subject_id}/jobs?subject=printer'
@@ -321,7 +328,7 @@ class PrintService:
             logger.error(f"狀態查詢過程發生錯誤: {str(e)}")
             raise
 
-    async def print_image(self, image_path):
+    async def print_image(self, image_path, print_settings=None):
         """完整的列印流程"""
         try:
             # 1. 認證
@@ -335,9 +342,18 @@ class PrintService:
             if not printer_status.get('ec_connected'):
                 raise Exception("印表機未連線到 Epson Connect")
 
+            # 如果沒有提供列印設定，則使用 A6 照片設定
+            if print_settings is None:
+                print_settings = {
+                    'media_size': 'ms_a6',  # A6 紙張
+                    'media_type': 'mt_plainpaper',  # 一般紙張
+                    'print_quality': 'normal',  # 一般品質
+                    'color_mode': 'color'
+                }
+
             # 3. 創建列印任務
             logger.info("步驟 3/5: 創建列印任務...")
-            job_info = await self.create_print_job()
+            job_info = await self.create_print_job(print_settings)
 
             # 4. 上傳文件
             logger.info("步驟 4/5: 上傳圖片...")
