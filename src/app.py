@@ -1,10 +1,12 @@
 import os
+import json
 import logging
 import cloudinary
-from flask import Flask, request, abort
-from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, ImageMessage
+from quart import Quart, request, abort
+from linebot.v3 import WebhookParser
+from linebot.v3.messaging import Configuration, ApiClient, MessagingApi
+from linebot.v3.exceptions import InvalidSignatureError
+from linebot.v3.webhooks import MessageEvent, TextMessageContent, ImageMessageContent
 
 from src.config import settings
 from src.handlers.message_handler import MessageHandler
@@ -16,12 +18,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 初始化 Flask
-app = Flask(__name__)
+# 初始化 Quart
+app = Quart(__name__)
 
 # 初始化 LINE Bot
-line_bot_api = LineBotApi(settings.LINE_CHANNEL_ACCESS_TOKEN)
-handler = WebhookHandler(settings.LINE_CHANNEL_SECRET)
+configuration = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
+with ApiClient(configuration) as api_client:
+    line_bot_api = MessagingApi(api_client)
 
 # 初始化 Cloudinary
 cloudinary.config(
@@ -34,13 +37,23 @@ cloudinary.config(
 message_handler = MessageHandler()
 
 @app.route("/callback", methods=['POST'])
-def callback():
+async def callback():
     """處理 LINE Webhook"""
-    signature = request.headers['X-Line-Signature']
-    body = request.get_data(as_text=True)
+    signature = request.headers.get('X-Line-Signature', '')
+    body = await request.get_data(as_text=True)
     
     try:
-        handler.handle(body, signature)
+        # 解析事件
+        events = WebhookParser(settings.LINE_CHANNEL_SECRET).parse(body, signature)
+        
+        # 處理每個事件
+        for event in events:
+            if isinstance(event, MessageEvent):
+                if isinstance(event.message, TextMessageContent):
+                    await message_handler.handle_text_message(event)
+                elif isinstance(event.message, ImageMessageContent):
+                    await message_handler.handle_image_message(event)
+        
         logger.info("webhook 處理成功")
         return 'OK'
     except InvalidSignatureError:
@@ -50,14 +63,6 @@ def callback():
         logger.error(f"處理 webhook 時發生錯誤：{str(e)}")
         abort(500)
 
-@handler.add(MessageEvent, message=TextMessage)
-def handle_text_message(event):
-    message_handler.handle_text_message(event)
-
-@handler.add(MessageEvent, message=ImageMessage)
-def handle_image_message(event):
-    message_handler.handle_image_message(event)
-
 if __name__ == "__main__":
     # 設定更詳細的日誌記錄
     logging.getLogger('linebot').setLevel(logging.DEBUG)
@@ -66,5 +71,5 @@ if __name__ == "__main__":
     os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
     
     # 啟動應用
-    port = int(os.environ.get('PORT', 8000))
-    app.run(host='0.0.0.0', port=port)
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, use_reloader=True, debug=False)

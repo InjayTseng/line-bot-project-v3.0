@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 class PrintService:
     def __init__(self):
+        # 設定印表機相關參數
         self.host = settings.PRINTER_HOST
         self.client_id = settings.PRINTER_CLIENT_ID
         self.secret = settings.PRINTER_SECRET
@@ -18,6 +19,22 @@ class PrintService:
         self._access_token = None
         self._device_id = None
         self._subject_id = None
+        
+        # 記錄設定資訊
+        logger.info("=== 印表機設定資訊 ===")
+        logger.info(f"Host: {self.host}")
+        logger.info(f"Client ID: {self.client_id}")
+        logger.info(f"Email: {self.email}")
+        logger.info(f"Base URL: {self.base_url}")
+        
+        # 檢查設定是否完整
+        if not all([self.host, self.client_id, self.secret, self.email]):
+            missing = []
+            if not self.host: missing.append('PRINTER_HOST')
+            if not self.client_id: missing.append('PRINTER_CLIENT_ID')
+            if not self.secret: missing.append('PRINTER_SECRET')
+            if not self.email: missing.append('PRINTER_EMAIL')
+            logger.error(f"缺少必要的印表機設定: {', '.join(missing)}")
         
     def _get_basic_auth(self):
         """獲取 Basic Auth Header"""
@@ -28,55 +45,99 @@ class PrintService:
 
     def _get_device_id(self):
         """獲取印表機設備 ID"""
-        return 'selinnaowen@print.epsonconnect.com'
+        if not self.email:
+            raise Exception("無法取得印表機 Email，請確認環境變數 PRINTER_EMAIL 已設定")
+        return self.email
 
     async def authenticate_device(self):
         """使用設備 ID 進行認證"""
         try:
+            # 檢查必要的設定
+            if not all([self.host, self.client_id, self.secret, self.email]):
+                missing = []
+                if not self.host: missing.append('PRINTER_HOST')
+                if not self.client_id: missing.append('PRINTER_CLIENT_ID')
+                if not self.secret: missing.append('PRINTER_SECRET')
+                if not self.email: missing.append('PRINTER_EMAIL')
+                error_msg = f"缺少必要的印表機設定: {', '.join(missing)}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+            
+            # 取得設備 ID
             self._device_id = self._get_device_id()
             logger.info(f"使用設備 ID: {self._device_id}")
 
+            # 準備認證標頭
             headers = {
                 'Authorization': self._get_basic_auth(),
                 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
                 'Accept': 'application/json;charset=utf-8'
             }
-            logger.debug(f"認證標頭: {headers}")
+            logger.info("=== 認證資訊 ===")
+            logger.info(f"Authorization: {headers['Authorization']}")
+            logger.info(f"Content-Type: {headers['Content-Type']}")
 
+            # 準備請求資料
             data = {
                 'grant_type': 'password',
-                'username': self._device_id,  # 使用設備 ID
-                'password': ''  # 空密碼
+                'username': self._device_id,
+                'password': ''
             }
-
             auth_uri = f'{self.base_url}/oauth2/auth/token?subject=printer'
             query_string = urlencode(data)
-            logger.debug(f"發送認證請求到: {auth_uri}")
-            logger.debug(f"請求參數: {query_string}")
+            
+            logger.info("=== 請求資訊 ===")
+            logger.info(f"URI: {auth_uri}")
+            logger.info(f"Data: {data}")
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    auth_uri,
-                    headers=headers,
-                    data=query_string.encode('utf-8')
-                ) as response:
-                    response_text = await response.text()
-                    logger.debug(f"回應狀態: {response.status}")
-                    logger.debug(f"回應內容: {response_text}")
+            # 發送認證請求
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        auth_uri,
+                        headers=headers,
+                        data=query_string.encode('utf-8')
+                    ) as response:
+                        response_text = await response.text()
+                        logger.info("=== 回應資訊 ===")
+                        logger.info(f"狀態碼: {response.status}")
+                        logger.info(f"內容: {response_text}")
 
-                    if response.status != 200:
-                        logger.error(f"認證失敗: {response.status} - {response_text}")
-                        raise Exception(f"認證失敗: {response.status} - {response_text}")
+                        if response.status != 200:
+                            error_msg = f"認證失敗: {response.status} - {response_text}"
+                            logger.error(error_msg)
+                            raise Exception(error_msg)
 
-                    result = json.loads(response_text)
-                    self._access_token = result.get('access_token')
-                    self._subject_id = result.get('subject_id')
-                    logger.info(f"認證成功，subject_id: {self._subject_id}")
+                        # 解析回應
+                        try:
+                            result = json.loads(response_text)
+                        except json.JSONDecodeError as e:
+                            error_msg = f"無法解析回應內容: {str(e)}"
+                            logger.error(error_msg)
+                            raise Exception(error_msg)
 
-                    return {
-                        'access_token': self._access_token,
-                        'device_id': self._device_id
-                    }
+                        # 檢查必要的欄位
+                        self._access_token = result.get('access_token')
+                        self._subject_id = result.get('subject_id')
+                        
+                        if not self._access_token or not self._subject_id:
+                            error_msg = "回應中缺少必要的欄位"
+                            logger.error(error_msg)
+                            raise Exception(error_msg)
+
+                        logger.info("=== 認證成功 ===")
+                        logger.info(f"Access Token: {self._access_token}")
+                        logger.info(f"Subject ID: {self._subject_id}")
+
+                        return {
+                            'access_token': self._access_token,
+                            'device_id': self._device_id
+                        }
+
+            except aiohttp.ClientError as e:
+                error_msg = f"網路請求失敗: {str(e)}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
 
         except Exception as e:
             logger.error(f"認證過程發生錯誤: {str(e)}")
@@ -326,6 +387,42 @@ class PrintService:
 
         except Exception as e:
             logger.error(f"狀態查詢過程發生錯誤: {str(e)}")
+            raise
+
+    async def get_job_status(self, job_id: str) -> str:
+        """取得列印工作狀態"""
+        try:
+            if not self._access_token:
+                await self.authenticate_device()
+
+            headers = {
+                'Authorization': f'Bearer {self._access_token}',
+                'Accept': 'application/json;charset=utf-8'
+            }
+
+            status_uri = f'{self.base_url}/printers/{self._subject_id}/jobs/{job_id}?subject=printer'
+            logger.debug(f"發送列印工作狀態查詢請求到: {status_uri}")
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    status_uri,
+                    headers=headers
+                ) as response:
+                    response_text = await response.text()
+                    logger.debug(f"回應狀態: {response.status}")
+                    logger.debug(f"回應內容: {response_text}")
+
+                    if response.status != 200:
+                        logger.error(f"列印工作狀態查詢失敗: {response.status} - {response_text}")
+                        raise Exception(f"列印工作狀態查詢失敗: {response.status}")
+
+                    result = json.loads(response_text)
+                    status = result.get('status', '')
+                    logger.info(f"列印工作狀態: {status}")
+                    return status
+
+        except Exception as e:
+            logger.error(f"列印工作狀態查詢過程發生錯誤: {str(e)}")
             raise
 
     async def print_image(self, image_path, print_settings=None):
