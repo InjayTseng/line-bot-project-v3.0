@@ -10,6 +10,10 @@
   - 可愛風格
   - 復古風格
 - 使用 Cloudinary 進行圖片存儲和處理
+- 支援照片列印功能
+  - 自動轉換為適合列印的格式
+  - 智能超時處理（1分鐘）
+  - 完整的錯誤處理機制
 - 模組化的程式架構，易於維護和擴展
 
 ## 使用流程
@@ -30,7 +34,15 @@
    
 4. 完成處理：
    - 機器人：回傳處理完成的圖片
-   - 機器人：「您的照片已處理完成！如果想要繼續處理其他照片，請直接上傳新的圖片。」
+   - 機器人：「您的照片已處理完成！您可以：
+     1️⃣ 列印這張照片
+     2️⃣ 上傳新的照片處理」
+
+5. 列印照片：
+   - 用戶：選擇「列印這張照片」
+   - 機器人：「正在處理列印請求...
+     - 如果列印成功：「您的照片已開始列印！」
+     - 如果列印失敗：「抱歉，列印失敗：[錯誤原因]」
 
 5. 重新開始：
    - 用戶可以直接上傳新的圖片重新開始處理流程
@@ -44,6 +56,10 @@
 - [x] 實現框架選擇功能
 - [x] 優化圖片處理效果
 - [x] 模組化程式架構
+- [x] 照片列印功能
+  - [x] PDF 轉換
+  - [x] 列印任務管理
+  - [x] 超時處理機制
 
 ## 技術需求
 
@@ -75,6 +91,12 @@
    # 部署設定（Render.com）
    RENDER=true
    RENDER_EXTERNAL_URL=your-app-name.onrender.com
+
+   # 印表機設定
+   PRINTER_HOST=your_printer_host
+   PRINTER_CLIENT_ID=your_printer_client_id
+   PRINTER_SECRET=your_printer_secret
+   PRINTER_EMAIL=your_printer_email
    ```
 
 ## 安裝和部署
@@ -126,7 +148,8 @@ line-bot-project-v3.0/
 │   ├── services/          # 服務層
 │   │   ├── __init__.py
 │   │   ├── image_service.py
-│   │   └── line_service.py
+│   │   ├── line_service.py
+│   │   └── printer_service.py  # 列印服務
 │   └── utils/             # 工具函數
 │       └── __init__.py
 ├── static/                # 靜態資源
