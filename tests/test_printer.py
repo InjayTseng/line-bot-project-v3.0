@@ -14,17 +14,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.services.print_service import PrintService
 
-def create_test_image():
-    """創建測試圖片"""
-    img_path = os.path.join(os.path.dirname(__file__), 'test_files', 'test_image.png')
-    os.makedirs(os.path.dirname(img_path), exist_ok=True)
-    
-    # 創建一個簡單的測試圖片
-    img = Image.new('RGB', (800, 600), color='white')
-    
-    # 儲存圖片
-    img.save(img_path)
-    return img_path
+def get_test_document():
+    """獲取測試文件路徑"""
+    return os.path.join(os.path.dirname(os.path.dirname(__file__)), 'samples', 'SampleDoc.pdf')
 
 async def main():
     try:
@@ -52,9 +44,9 @@ async def main():
             
             # 測試列印
             logger.info("\n=== 測試列印 ===")
-            img_path = create_test_image()
-            logger.info(f"使用測試圖片: {img_path}")
-            await printer.print_image(img_path)
+            doc_path = get_test_document()
+            logger.info(f"使用測試文件: {doc_path}")
+            await printer.print_image(doc_path)
         
         logger.info("\n測試完成！")
         
