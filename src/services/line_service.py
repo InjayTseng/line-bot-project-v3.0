@@ -36,13 +36,23 @@ class LineService:
     async def reply_image(self, reply_token, image_url):
         """發送圖片訊息"""
         try:
+            logger.info(f"準備發送圖片訊息，圖片 URL：{image_url}")
+            
+            # 檢查 URL 是否有效
+            if not image_url or not image_url.startswith(('http://', 'https://')):
+                logger.error(f"無效的圖片 URL：{image_url}")
+                raise ValueError(f"無效的圖片 URL：{image_url}")
+                
             message = ImageMessage(original_content_url=image_url, preview_image_url=image_url)
             request = ReplyMessageRequest(
                 reply_token=reply_token,
                 messages=[message]
             )
-            self.line_bot_api.reply_message_with_http_info(request)
-            logger.info(f"圖片訊息發送成功，圖片 URL：{image_url}")
+            
+            # 發送請求
+            logger.info(f"發送圖片訊息請求，reply_token: {reply_token}")
+            response = self.line_bot_api.reply_message_with_http_info(request)
+            logger.info(f"圖片訊息發送成功，圖片 URL：{image_url}，回應：{response}")
         except Exception as e:
             logger.error(f"發送圖片訊息失敗：{str(e)}")
             raise
@@ -50,12 +60,27 @@ class LineService:
     async def reply_message(self, reply_token, messages):
         """發送多個訊息"""
         try:
+            logger.info(f"準備發送多個訊息，訊息數量：{len(messages)}")
+            
+            # 檢查訊息
+            for i, msg in enumerate(messages):
+                if isinstance(msg, ImageMessage):
+                    logger.info(f"訊息 {i+1} 是圖片訊息，URL：{msg.original_content_url}")
+                    if not msg.original_content_url or not msg.original_content_url.startswith(('http://', 'https://')):
+                        logger.error(f"無效的圖片 URL：{msg.original_content_url}")
+                        raise ValueError(f"無效的圖片 URL：{msg.original_content_url}")
+                elif isinstance(msg, TextMessage):
+                    logger.info(f"訊息 {i+1} 是文字訊息，內容：{msg.text[:30]}...")
+            
             request = ReplyMessageRequest(
                 reply_token=reply_token,
                 messages=messages
             )
-            self.line_bot_api.reply_message_with_http_info(request)
-            logger.info("多個訊息發送成功")
+            
+            # 發送請求
+            logger.info(f"發送多個訊息請求，reply_token: {reply_token}")
+            response = self.line_bot_api.reply_message_with_http_info(request)
+            logger.info(f"多個訊息發送成功，回應：{response}")
         except Exception as e:
             logger.error(f"發送多個訊息失敗：{str(e)}")
             raise

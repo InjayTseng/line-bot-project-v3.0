@@ -24,7 +24,7 @@ class MessageHandler:
             # 檢查是否要列印
             if text.lower() == 'print':
                 if 'processed_image' not in self.user_states[user_id]:
-                    await self.line_service.reply_text(event.reply_token, "請先上傳照片並選擇框架風格。")
+                    await self.line_service.reply_text(event.reply_token, "請先上傳照片。")
                     return
                 
                 try:
@@ -74,59 +74,10 @@ class MessageHandler:
                     logger.error(f"列印失敗：{str(e)}")
                     await self.line_service.reply_text(event.reply_token, "列印失敗，請稍後再試。")
                     return
-            
-            # 用戶已上傳圖片，正在選擇框架
-            if text in ['1', '2']:
-                frame_style = settings.FRAME_STYLES.get(text)
-                if not frame_style:
-                    await self.line_service.reply_text(event.reply_token, "無效的選擇，請重新選擇框架風格。")
-                    return
-
-                image_filename = self.user_states[user_id]['image']
-                try:
-                    # 處理圖片
-                    processed_filename = await self.image_service.process_image_with_frame(image_filename, frame_style)
-                    if not processed_filename:
-                        await self.line_service.reply_text(event.reply_token, "圖片處理失敗，請重新上傳照片。")
-                        return
-
-                    # 儲存處理後的圖片檔名
-                    self.user_states[user_id]['processed_image'] = processed_filename
-                    
-                    # 上傳到 Cloudinary
-                    try:
-                        processed_path = os.path.join(settings.UPLOAD_FOLDER, processed_filename)
-                        cloudinary_url = await self.image_service.upload_to_cloudinary(processed_path)
-                        if not cloudinary_url:
-                            raise Exception("上傳到 Cloudinary 失敗")
-                    except Exception as e:
-                        logger.error(f"上傳到 Cloudinary 失敗：{str(e)}")
-                        await self.line_service.reply_text(event.reply_token, "圖片上傳失敗，請稍後再試。")
-                        return
-
-                    # 儲存處理後的圖片路徑
-                    self.user_states[user_id]['processed_path'] = processed_path
-                    self.user_states[user_id]['original_path'] = os.path.join(settings.UPLOAD_FOLDER, image_filename)
-
-                    # 發送處理後的圖片和完成訊息
-                    await self.line_service.reply_message(
-                        event.reply_token,
-                        [
-                            ImageMessage(
-                                original_content_url=cloudinary_url,
-                                preview_image_url=cloudinary_url
-                            ),
-                            TextMessage(text="您的照片已處理完成！如果想要繼續處理其他照片，請直接上傳新的圖片。\n或是打 'Print' 進行列印。")
-                        ]
-                    )
-
-                except Exception as e:
-                    logger.error(f"處理圖片時發生錯誤：{str(e)}")
-                    await self.line_service.reply_text(event.reply_token, "抱歉，處理圖片時發生錯誤。")
             else:
                 await self.line_service.reply_text(
                     event.reply_token,
-                    "請選擇框架風格：\n1. 可愛風格\n2. 復古風格"
+                    "您的照片已處理完成！如果想要繼續處理其他照片，請直接上傳新的圖片。\n或是打 'Print' 進行列印。"
                 )
         else:
             # 用戶尚未上傳圖片
@@ -157,11 +108,64 @@ class MessageHandler:
                 'upload_time': datetime.now().isoformat()
             }
             
-            # 回覆訊息
-            await self.line_service.reply_text(
-                event.reply_token,
-                "請選擇框架風格：\n1. 可愛風格\n2. 復古風格"
-            )
+            # 直接使用預設框架處理圖片
+            frame_style = settings.DEFAULT_FRAME_STYLE
+            try:
+                # 處理圖片
+                processed_filename = await self.image_service.process_image_with_frame(image_filename, frame_style)
+                if not processed_filename:
+                    await self.line_service.reply_text(event.reply_token, "圖片處理失敗，請重新上傳照片。")
+                    return
+
+                # 儲存處理後的圖片檔名
+                self.user_states[event.source.user_id]['processed_image'] = processed_filename
+                
+                # 上傳到 Cloudinary
+                try:
+                    processed_path = os.path.join(settings.UPLOAD_FOLDER, processed_filename)
+                    cloudinary_url = await self.image_service.upload_to_cloudinary(processed_path)
+                    if not cloudinary_url:
+                        raise Exception("上傳到 Cloudinary 失敗")
+                    
+                    # 記錄 Cloudinary URL
+                    logger.info(f"Cloudinary URL: {cloudinary_url}")
+                except Exception as e:
+                    logger.error(f"上傳到 Cloudinary 失敗：{str(e)}")
+                    await self.line_service.reply_text(event.reply_token, "圖片上傳失敗，請稍後再試。")
+                    return
+
+                # 儲存處理後的圖片路徑
+                self.user_states[event.source.user_id]['processed_path'] = processed_path
+                self.user_states[event.source.user_id]['original_path'] = os.path.join(settings.UPLOAD_FOLDER, image_filename)
+                self.user_states[event.source.user_id]['cloudinary_url'] = cloudinary_url
+
+                try:
+                    # 發送處理後的圖片和完成訊息
+                    image_message = ImageMessage(
+                        original_content_url=cloudinary_url,
+                        preview_image_url=cloudinary_url
+                    )
+                    text_message = TextMessage(text="您的照片已處理完成！如果想要繼續處理其他照片，請直接上傳新的圖片。\n或是打 'Print' 進行列印。")
+                    
+                    # 先嘗試單獨發送圖片
+                    await self.line_service.reply_message(
+                        event.reply_token,
+                        [image_message, text_message]
+                    )
+                except Exception as e:
+                    logger.error(f"發送圖片訊息失敗：{str(e)}")
+                    # 如果發送失敗，嘗試只發送文字訊息
+                    try:
+                        await self.line_service.reply_text(
+                            event.reply_token, 
+                            f"您的照片已處理完成！圖片可在此查看：{cloudinary_url}\n如果想要繼續處理其他照片，請直接上傳新的圖片。\n或是打 'Print' 進行列印。"
+                        )
+                    except Exception as text_error:
+                        logger.error(f"發送文字訊息也失敗：{str(text_error)}")
+
+            except Exception as e:
+                logger.error(f"處理圖片時發生錯誤：{str(e)}")
+                await self.line_service.reply_text(event.reply_token, "抱歉，處理圖片時發生錯誤。")
             
         except Exception as e:
             logger.error(f"處理圖片訊息時發生錯誤：{str(e)}")

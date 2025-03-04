@@ -48,28 +48,63 @@ class ImageService:
             def process_image():
                 # 讀取圖片
                 with Image.open(image_path) as user_image, Image.open(frame_path) as frame_image:
-                    # 調整框架大小以匹配用戶圖片
-                    frame_resized = frame_image.resize(user_image.size, Image.Resampling.LANCZOS)
+                    # 獲取原始圖片和框架尺寸
+                    user_width, user_height = user_image.size
+                    frame_width, frame_height = frame_image.size
+                    
+                    # 創建一個新的空白圖像，大小與框架相同
+                    result = Image.new('RGBA', (frame_width, frame_height), (0, 0, 0, 0))
+                    
+                    # 計算單個照片在框架中的最大可用寬度和高度
+                    # 我們將框架高度的一半作為單個照片的最大高度（上下排列）
+                    max_photo_width = frame_width
+                    max_photo_height = frame_height // 2
+                    
+                    # 計算縮放比例，保持原始照片的長寬比
+                    width_ratio = max_photo_width / user_width
+                    height_ratio = max_photo_height / user_height
+                    ratio = min(width_ratio, height_ratio) * 0.9  # 縮小10%以確保有邊距
+                    
+                    # 縮放用戶圖片
+                    new_width = int(user_width * ratio)
+                    new_height = int(user_height * ratio)
+                    user_image_resized = user_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
                     
                     # 將用戶圖片轉換為 RGBA 模式
-                    user_image = user_image.convert('RGBA')
-                    frame_resized = frame_resized.convert('RGBA')
+                    user_image_resized = user_image_resized.convert('RGBA')
                     
-                    # 合成圖片
-                    composite = Image.alpha_composite(user_image, frame_resized)
+                    # 計算第一張照片的位置（上方）
+                    x_offset = (frame_width - new_width) // 2
+                    y_offset_top = (max_photo_height - new_height) // 2
+                    
+                    # 計算第二張照片的位置（下方）
+                    y_offset_bottom = max_photo_height + (max_photo_height - new_height) // 2
+                    
+                    # 將第一張照片粘貼到結果圖像上（上方）
+                    result.paste(user_image_resized, (x_offset, y_offset_top), user_image_resized)
+                    
+                    # 將第二張照片粘貼到結果圖像上（下方）
+                    result.paste(user_image_resized, (x_offset, y_offset_bottom), user_image_resized)
+                    
+                    # 將框架粘貼到結果圖像上
+                    result.paste(frame_image, (0, 0), frame_image)
                     
                     # 生成新檔名
                     timestamp = image_filename.split('_')[0]  # 取得時間戳記
                     processed_filename = f"processed_{timestamp}_{image_filename}"
                     processed_path = os.path.join(settings.UPLOAD_FOLDER, processed_filename)
                     
-                    # 儲存處理後的圖片（轉換為 RGB 以移除透明度）
-                    composite = composite.convert('RGB')
-                    composite.save(processed_path, 'JPEG', quality=80)
-                    logger.info(f"圖片處理完成：{processed_path}")
+                    # 縮小圖片尺寸以減小文件大小
+                    max_size = (1024, 1024)  # 最大尺寸為 1024x1024
+                    result.thumbnail(max_size, Image.Resampling.LANCZOS)
                     
-                    # 檢查檔案大小
+                    # 儲存處理後的圖片（轉換為 RGB 以移除透明度）
+                    result = result.convert('RGB')
+                    result.save(processed_path, 'JPEG', quality=85, optimize=True)  # 降低品質以減小文件大小
+                    
+                    # 記錄處理後的圖片大小
                     file_size = os.path.getsize(processed_path)
+                    logger.info(f"圖片處理完成：{processed_path}")
                     logger.info(f"處理後的圖片大小：{file_size} bytes")
                     
                     return processed_filename
@@ -85,17 +120,62 @@ class ImageService:
     async def upload_to_cloudinary(image_path):
         """上傳圖片到 Cloudinary"""
         try:
-            # 使用 asyncio.to_thread 來在線程池中運行同步代碼
-            import asyncio
-            response = await asyncio.to_thread(
-                cloudinary.uploader.upload,
-                image_path,
-                folder="line-bot-frames",
-                resource_type="image",
-                quality="auto:good",
-                fetch_format="auto"
+            # 檢查 Cloudinary 配置是否完整
+            if not all([settings.CLOUDINARY_CLOUD_NAME, settings.CLOUDINARY_API_KEY, settings.CLOUDINARY_API_SECRET]):
+                logger.error("Cloudinary 配置不完整")
+                return None
+                
+            # 檢查文件是否存在
+            if not os.path.exists(image_path):
+                logger.error(f"找不到要上傳的文件：{image_path}")
+                return None
+                
+            # 記錄文件大小
+            file_size = os.path.getsize(image_path)
+            logger.info(f"準備上傳到 Cloudinary 的文件大小：{file_size} bytes")
+            
+            # 如果文件太大，進一步壓縮
+            if file_size > 1000000:  # 如果大於 1MB
+                try:
+                    with Image.open(image_path) as img:
+                        # 縮小尺寸
+                        img.thumbnail((800, 800), Image.Resampling.LANCZOS)
+                        # 保存為較低質量
+                        img = img.convert('RGB')
+                        img.save(image_path, 'JPEG', quality=75, optimize=True)
+                        logger.info(f"圖片已進一步壓縮，新大小：{os.path.getsize(image_path)} bytes")
+                except Exception as e:
+                    logger.error(f"壓縮圖片失敗：{str(e)}")
+            
+            logger.info(f"開始上傳到 Cloudinary：{image_path}")
+            
+            # 配置 Cloudinary
+            cloudinary.config(
+                cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+                api_key=settings.CLOUDINARY_API_KEY,
+                api_secret=settings.CLOUDINARY_API_SECRET
             )
-            return response['secure_url']
+            
+            # 上傳到 Cloudinary，添加轉換選項
+            try:
+                upload_result = cloudinary.uploader.upload(
+                    image_path,
+                    folder="line-bot-frames",
+                    transformation=[
+                        {"quality": "auto:low"},  # 自動優化質量
+                        {"fetch_format": "auto"}   # 自動選擇最佳格式
+                    ]
+                )
+                cloudinary_url = upload_result.get('secure_url')
+                logger.info(f"Cloudinary 上傳成功：{cloudinary_url}")
+                return cloudinary_url
+            except Exception as e:
+                logger.error(f"Cloudinary 上傳失敗：{str(e)}")
+                # 嘗試使用本地 URL
+                base_url = settings.get_base_url()
+                local_url = f"{base_url}/tmp/uploads/{os.path.basename(image_path)}"
+                logger.info(f"使用本地 URL 替代：{local_url}")
+                return local_url
         except Exception as e:
-            logger.error(f"上傳圖片到 Cloudinary 失敗：{str(e)}")
-            raise
+            logger.error(f"上傳到 Cloudinary 過程中發生錯誤：{str(e)}")
+            return None

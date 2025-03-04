@@ -28,13 +28,18 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # 相框樣式設定
 FRAME_STYLES = {
     '1': '可愛風格',
-    '2': '復古風格'
+    '2': '復古風格',
+    '3': '簡約風格'
 }
 
 FRAME_FILES = {
     '可愛風格': 'cute.png',
-    '復古風格': 'vintage.png'
+    '復古風格': 'vintage.png',
+    '簡約風格': 'only-frame.png'
 }
+
+# 預設框架風格
+DEFAULT_FRAME_STYLE = '簡約風格'
 
 # 部署相關設定
 IS_RENDER = os.getenv('RENDER', 'false').lower() == 'true'
@@ -43,8 +48,11 @@ NGROK_URL = os.getenv('NGROK_URL', None)
 
 def get_base_url():
     """獲取基礎 URL"""
+    # 從環境變數獲取 NGROK_URL，如果不存在則使用預設值
+    current_ngrok_url = os.getenv('NGROK_URL', None)
+    
     if IS_RENDER and RENDER_EXTERNAL_URL:
         return RENDER_EXTERNAL_URL
-    elif NGROK_URL:
-        return NGROK_URL
-    return 'http://localhost:8000'
+    elif current_ngrok_url:
+        return current_ngrok_url
+    return 'http://localhost:8080'

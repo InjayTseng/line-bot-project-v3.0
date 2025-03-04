@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import cloudinary
-from quart import Quart, request, abort
+from quart import Quart, request, abort, send_from_directory
 from linebot.v3 import WebhookParser
 from linebot.v3.messaging import Configuration, ApiClient, MessagingApi
 from linebot.v3.exceptions import InvalidSignatureError
@@ -35,6 +35,16 @@ cloudinary.config(
 
 # 初始化訊息處理器
 message_handler = MessageHandler()
+
+# 設定靜態文件路由
+@app.route('/static/<path:filename>')
+async def serve_static(filename):
+    return await send_from_directory('static', filename)
+
+# 設定上傳文件路由
+@app.route('/tmp/uploads/<path:filename>')
+async def serve_uploads(filename):
+    return await send_from_directory(settings.UPLOAD_FOLDER, filename)
 
 @app.route("/callback", methods=['POST'])
 async def callback():
