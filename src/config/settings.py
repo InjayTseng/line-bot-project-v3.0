@@ -32,11 +32,16 @@ FRAME_STYLES = {
     '3': '簡約風格'
 }
 
+# 相框文件設定
 FRAME_FILES = {
     '可愛風格': 'cute.png',
     '復古風格': 'vintage.png',
     '簡約風格': 'only-frame.png'
 }
+
+# 方向相關相框設定
+PORTRAIT_FRAME = 'only-frame-protrait.png'  # 直式相框
+LANDSCAPE_FRAME = 'only-frame-land.png'     # 橫式相框
 
 # 預設框架風格
 DEFAULT_FRAME_STYLE = '簡約風格'
