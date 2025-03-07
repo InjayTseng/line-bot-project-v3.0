@@ -2,7 +2,7 @@ import os
 import logging
 import traceback
 from datetime import datetime
-from linebot.v3.messaging import ImageMessage, TextMessage
+from linebot.v3.messaging import ImageMessage, TextMessage, TemplateMessage, MessageAction, ConfirmTemplate
 from src.config import settings
 from src.services.line_service import LineService
 from src.services.image_service import ImageService
@@ -62,6 +62,15 @@ class MessageHandler:
         if text.lower() in [keyword.lower() for keyword in self.help_keywords]:
             logger.info(f"用戶 {user_id} 請求幫助")
             await self.line_service.reply_text(event.reply_token, self.welcome_message)
+            return
+            
+        # 處理「繼續上傳」的回應
+        if text == "繼續上傳":
+            logger.info(f"用戶 {user_id} 選擇繼續上傳")
+            await self.line_service.reply_text(
+                event.reply_token,
+                "請上傳您想要處理的下一張照片。"
+            )
             return
 
         if user_id in self.user_states:
@@ -193,13 +202,12 @@ class MessageHandler:
                 self.user_states[event.source.user_id]['cloudinary_url'] = cloudinary_url
 
                 try:
-                    # 發送處理後的圖片和完成訊息
+                    # 發送處理後的圖片
                     logger.info(f"準備發送處理後的圖片: {cloudinary_url}")
                     image_message = ImageMessage(
                         original_content_url=cloudinary_url,
                         preview_image_url=cloudinary_url
                     )
-                    text_message = TextMessage(text="您的照片已處理完成！如果想要繼續處理其他照片，請直接上傳新的圖片。\n或是打 'Print' 進行列印。")
                     
                     # 檢查是否為直式照片
                     is_portrait = "portrait" in processed_filename
@@ -221,14 +229,22 @@ class MessageHandler:
                                 cloudinary_url
                             )
                             
-                            # 再發送一條文字訊息
-                            text_message2 = TextMessage(text="如果想要繼續處理其他照片，請直接上傳新的圖片。\n或是打 'Print' 進行列印。")
+                            # 發送確認模板訊息
                             await self.line_service.push_message(
                                 event.source.user_id,
-                                text_message2
+                                TemplateMessage(
+                                    alt_text="請選擇下一步操作",
+                                    template=ConfirmTemplate(
+                                        text="您想要列印這張照片嗎？",
+                                        actions=[
+                                            MessageAction(label="列印", text="Print"),
+                                            MessageAction(label="繼續上傳", text="繼續上傳")
+                                        ]
+                                    )
+                                )
                             )
                             
-                            logger.info(f"直式照片: push_image 發送成功")
+                            logger.info(f"直式照片: push_image 和確認模板發送成功")
                         except Exception as push_error:
                             logger.error(f"使用 push_image 發送直式照片失敗: {str(push_error)}")
                             logger.error(traceback.format_exc())
@@ -240,22 +256,64 @@ class MessageHandler:
                                     cloudinary_url
                                 )
                                 logger.info(f"使用 reply_image 發送直式照片成功")
+                                
+                                # 發送確認模板訊息
+                                await self.line_service.push_message(
+                                    event.source.user_id,
+                                    TemplateMessage(
+                                        alt_text="請選擇下一步操作",
+                                        template=ConfirmTemplate(
+                                            text="您想要列印這張照片嗎？",
+                                            actions=[
+                                                MessageAction(label="列印", text="Print"),
+                                                MessageAction(label="繼續上傳", text="繼續上傳")
+                                            ]
+                                        )
+                                    )
+                                )
                             except Exception as reply_image_error:
                                 logger.error(f"使用 reply_image 發送直式照片失敗: {str(reply_image_error)}")
                                 logger.error(traceback.format_exc())
                                 # 如果還是失敗，嘗試只發送文字訊息
                                 await self.line_service.reply_text(
                                     event.reply_token, 
-                                    f"您的照片已處理完成！圖片可在此查看：{cloudinary_url}\n如果想要繼續處理其他照片，請直接上傳新的圖片。\n或是打 'Print' 進行列印。"
+                                    f"您的照片已處理完成！圖片可在此查看：{cloudinary_url}\n請輸入 'Print' 進行列印，或直接上傳新照片繼續處理。"
                                 )
                     else:
-                        # 對於橫式照片，使用原來的方式
-                        logger.info(f"橫式照片: 使用 reply_message 發送")
+                        # 對於橫式照片，先發送圖片，然後發送確認模板
+                        logger.info(f"橫式照片: 使用 reply_message 發送圖片，然後發送確認模板")
+                        
+                        # 先發送圖片
                         await self.line_service.reply_message(
                             event.reply_token,
-                            [image_message, text_message]
+                            [image_message]
                         )
-                        logger.info(f"橫式照片: reply_message 發送成功")
+                        logger.info(f"橫式照片: 圖片發送成功")
+                        
+                        # 然後發送確認模板訊息
+                        try:
+                            await self.line_service.push_message(
+                                event.source.user_id,
+                                TemplateMessage(
+                                    alt_text="請選擇下一步操作",
+                                    template=ConfirmTemplate(
+                                        text="您想要列印這張照片嗎？",
+                                        actions=[
+                                            MessageAction(label="列印", text="Print"),
+                                            MessageAction(label="繼續上傳", text="繼續上傳")
+                                        ]
+                                    )
+                                )
+                            )
+                            logger.info(f"橫式照片: 確認模板發送成功")
+                        except Exception as template_error:
+                            logger.error(f"發送確認模板失敗: {str(template_error)}")
+                            logger.error(traceback.format_exc())
+                            # 如果發送確認模板失敗，發送普通文字訊息
+                            await self.line_service.push_message(
+                                event.source.user_id,
+                                TextMessage(text="請輸入 'Print' 進行列印，或直接上傳新照片繼續處理。")
+                            )
                 except Exception as e:
                     logger.error(f"發送圖片訊息失敗：{str(e)}")
                     logger.error(traceback.format_exc())
@@ -264,7 +322,7 @@ class MessageHandler:
                         logger.info(f"嘗試只發送文字訊息: {cloudinary_url}")
                         await self.line_service.reply_text(
                             event.reply_token, 
-                            f"您的照片已處理完成！圖片可在此查看：{cloudinary_url}\n如果想要繼續處理其他照片，請直接上傳新的圖片。\n或是打 'Print' 進行列印。"
+                            f"您的照片已處理完成！圖片可在此查看：{cloudinary_url}\n請輸入 'Print' 進行列印，或直接上傳新照片繼續處理。"
                         )
                         logger.info(f"文字訊息發送成功: {cloudinary_url}")
                     except Exception as text_error:

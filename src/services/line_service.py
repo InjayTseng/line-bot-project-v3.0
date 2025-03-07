@@ -3,6 +3,7 @@ import aiohttp
 from linebot.v3 import WebhookParser
 from linebot.v3.messaging import Configuration, ApiClient, MessagingApi
 from linebot.v3.messaging import TextMessage, ImageMessage, ReplyMessageRequest, PushMessageRequest
+from linebot.v3.messaging import TemplateMessage, ConfirmTemplate, MessageAction
 from src.config import settings
 import traceback
 
@@ -173,5 +174,37 @@ class LineService:
             return await self.push_message(user_id, image_message)
         except Exception as e:
             logger.error(f"發送圖片推播訊息失敗：{str(e)}")
+            logger.error(traceback.format_exc())
+            raise
+
+    async def reply_confirm_template(self, reply_token, alt_text, text, yes_label="是", no_label="否", yes_data="yes", no_data="no"):
+        """發送確認模板訊息"""
+        try:
+            logger.info(f"準備發送確認模板訊息：{text}")
+            
+            # 創建確認模板
+            confirm_template = ConfirmTemplate(
+                text=text,
+                actions=[
+                    MessageAction(label=yes_label, text=yes_data),
+                    MessageAction(label=no_label, text=no_data)
+                ]
+            )
+            
+            # 創建模板訊息
+            template_message = TemplateMessage(
+                alt_text=alt_text,
+                template=confirm_template
+            )
+            
+            # 發送訊息
+            request = ReplyMessageRequest(
+                reply_token=reply_token,
+                messages=[template_message]
+            )
+            self.line_bot_api.reply_message_with_http_info(request)
+            logger.info(f"確認模板訊息發送成功：{text}")
+        except Exception as e:
+            logger.error(f"發送確認模板訊息失敗：{str(e)}")
             logger.error(traceback.format_exc())
             raise
