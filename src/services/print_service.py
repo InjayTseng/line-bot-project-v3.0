@@ -83,7 +83,7 @@ class PrintService:
             data = {
                 'grant_type': 'password',
                 'username': self._device_id,
-                'password': self.secret  # 嘗試使用 client_secret 作為密碼
+                'password': ''  # 使用空密碼
             }
             
             logger.info("=== 請求資訊 ===")
@@ -148,7 +148,7 @@ class PrintService:
         """初始認證，獲取 access_token 和 device_id"""
         return await self.authenticate_device()
 
-    async def create_print_job(self, print_settings=None):
+    async def create_print_job(self, print_settings=None, print_mode=None):
         """創建列印任務"""
         try:
             if not self._access_token:
@@ -160,12 +160,12 @@ class PrintService:
                 'Accept': 'application/json;charset=utf-8'
             }
 
-            # 預設的列印設定 - 使用 4x6 照片設定
+            # 預設的列印設定 - 使用最基本的設定
             default_settings = {
-                'media_size': 'ms_4x6in',  # 4x6 英寸
-                'media_type': 'mt_photopaper',  # 照片紙
+                'media_size': 'ms_letter',  # Letter 紙張
+                'media_type': 'mt_plainpaper',  # 一般紙張
                 'borderless': False,  # 有邊框
-                'print_quality': 'high',  # 高品質
+                'print_quality': 'normal',  # 一般品質
                 'source': 'auto',
                 'color_mode': 'color',
                 'reverse_order': False,
@@ -182,12 +182,14 @@ class PrintService:
             for key, value in default_settings.items():
                 logger.info(f"{key}: {value}")
 
-            # 根據紙張大小設置列印模式
-            print_mode = "photo"  # 使用照片模式
-            logger.info(f"使用照片列印模式: {print_mode}")
+            # 如果沒有指定列印模式，則使用 document 模式
+            if print_mode is None:
+                print_mode = "document"
+                
+            logger.info(f"使用列印模式: {print_mode}")
 
             data = {
-                'job_name': 'LINE Bot Photo Print',
+                'job_name': 'LINE Bot Print',
                 'print_mode': print_mode,
                 'print_setting': default_settings
             }
@@ -356,26 +358,18 @@ class PrintService:
             if not self._access_token:
                 await self.authenticate_device()
 
-            # 先取得印表機資訊
-            printer_info = await self.get_printer_info()
-            if not printer_info:
-                raise Exception("未取得印表機資訊，請確保印表機已開機並連線")
-            
-            # 檢查印表機連線狀態
-            if not printer_info.get('ec_connected'):
-                raise Exception("印表機未連線到 Epson Connect，請確保印表機已開機並連線到網路")
-
             headers = {
                 'Authorization': f'Bearer {self._access_token}',
                 'Accept': 'application/json;charset=utf-8'
             }
 
-            status_uri = f'{self.base_url}/printers/{self._subject_id}?subject=printer'
-            logger.debug(f"發送狀態查詢請求到: {status_uri}")
+            # 1. 獲取印表機資訊
+            info_uri = f'{self.base_url}/printers/{self._subject_id}?subject=printer'
+            logger.debug(f"發送印表機資訊請求到: {info_uri}")
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    status_uri,
+                    info_uri,
                     headers=headers
                 ) as response:
                     response_text = await response.text()
@@ -383,20 +377,127 @@ class PrintService:
                     logger.debug(f"回應內容: {response_text}")
 
                     if response.status != 200:
-                        logger.error(f"狀態查詢失敗: {response.status} - {response_text}")
-                        raise Exception(f"狀態查詢失敗: {response.status}")
+                        logger.error(f"取得印表機狀態失敗: {response.status} - {response_text}")
+                        raise Exception(f"取得印表機狀態失敗: {response.status}")
 
                     result = json.loads(response_text)
-                    # 詳細記錄印表機狀態
+                    if not result:
+                        logger.warning("未取得印表機狀態")
+                        return {}
+                        
                     logger.info("印表機狀態:")
                     logger.info(f"- 名稱: {result.get('printer_name')}")
-                    logger.info(f"- 序號: {result.get('serial_no')}")
                     logger.info(f"- 連線狀態: {result.get('ec_connected')}")
-
+                    
+                    # 2. 獲取印表機能力
+                    capability_uri = f'{self.base_url}/printers/{self._subject_id}/capability/document?subject=printer'
+                    logger.debug(f"發送印表機能力請求到: {capability_uri}")
+                    
+                    async with session.get(
+                        capability_uri,
+                        headers=headers
+                    ) as cap_response:
+                        cap_text = await cap_response.text()
+                        logger.debug(f"回應狀態: {cap_response.status}")
+                        logger.debug(f"回應內容: {cap_text}")
+                        
+                        if cap_response.status == 200:
+                            try:
+                                cap_result = json.loads(cap_text)
+                                logger.info("印表機支持的紙張大小:")
+                                for size in cap_result.get('media_sizes', []):
+                                    logger.info(f"- {size}")
+                                    
+                                logger.info("印表機支持的紙張類型:")
+                                for media_type in cap_result.get('media_types', []):
+                                    logger.info(f"- {media_type}")
+                                    
+                                logger.info("印表機支持的列印模式:")
+                                for mode in cap_result.get('print_modes', []):
+                                    logger.info(f"- {mode}")
+                            except:
+                                logger.error("解析印表機能力資訊失敗")
+                    
+                    # 3. 獲取照片列印能力
+                    photo_capability_uri = f'{self.base_url}/printers/{self._subject_id}/capability/photo?subject=printer'
+                    logger.debug(f"發送照片列印能力請求到: {photo_capability_uri}")
+                    
+                    async with session.get(
+                        photo_capability_uri,
+                        headers=headers
+                    ) as photo_cap_response:
+                        photo_cap_text = await photo_cap_response.text()
+                        logger.debug(f"回應狀態: {photo_cap_response.status}")
+                        logger.debug(f"回應內容: {photo_cap_text}")
+                        
+                        if photo_cap_response.status == 200:
+                            try:
+                                photo_cap_result = json.loads(photo_cap_text)
+                                logger.info("照片列印支持的紙張大小:")
+                                for size in photo_cap_result.get('media_sizes', []):
+                                    logger.info(f"- {size}")
+                                    
+                                logger.info("照片列印支持的紙張類型:")
+                                for media_type in photo_cap_result.get('media_types', []):
+                                    logger.info(f"- {media_type}")
+                            except:
+                                logger.error("解析照片列印能力資訊失敗")
+                    
                     return result
 
         except Exception as e:
-            logger.error(f"狀態查詢過程發生錯誤: {str(e)}")
+            logger.error(f"檢查印表機狀態過程發生錯誤: {str(e)}")
+            raise
+            
+    async def get_printer_capabilities(self):
+        """獲取印表機能力"""
+        try:
+            if not self._access_token:
+                await self.authenticate_device()
+
+            headers = {
+                'Authorization': f'Bearer {self._access_token}',
+                'Accept': 'application/json;charset=utf-8'
+            }
+
+            # 獲取文檔列印能力
+            capability_uri = f'{self.base_url}/printers/{self._subject_id}/capability/document?subject=printer'
+            logger.debug(f"發送印表機能力請求到: {capability_uri}")
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    capability_uri,
+                    headers=headers
+                ) as response:
+                    response_text = await response.text()
+                    logger.debug(f"回應狀態: {response.status}")
+                    logger.debug(f"回應內容: {response_text}")
+
+                    if response.status != 200:
+                        logger.error(f"獲取印表機能力失敗: {response.status} - {response_text}")
+                        raise Exception(f"獲取印表機能力失敗: {response.status}")
+
+                    result = json.loads(response_text)
+                    
+                    # 記錄支持的紙張尺寸
+                    logger.info("=== 印表機支持的紙張尺寸 ===")
+                    for size in result.get('media_sizes', []):
+                        logger.info(f"- {size}")
+                    
+                    # 記錄支持的紙張類型
+                    logger.info("=== 印表機支持的紙張類型 ===")
+                    for type in result.get('media_types', []):
+                        logger.info(f"- {type}")
+                    
+                    # 記錄支持的列印品質
+                    logger.info("=== 印表機支持的列印品質 ===")
+                    for quality in result.get('print_qualities', []):
+                        logger.info(f"- {quality}")
+                    
+                    return result
+
+        except Exception as e:
+            logger.error(f"獲取印表機能力過程發生錯誤: {str(e)}")
             raise
 
     async def get_job_status(self, job_id: str) -> str:
@@ -453,8 +554,8 @@ class PrintService:
             if print_settings is None:
                 print_settings = {
                     'media_size': 'ms_a6',  # A6 紙張
-                    'media_type': 'mt_plainpaper',  # 一般紙張
-                    'print_quality': 'normal',  # 一般品質
+                    'media_type': 'mt_photopaper',  # 照片紙
+                    'print_quality': 'high',  # 高品質
                     'color_mode': 'color'
                 }
 
@@ -469,10 +570,10 @@ class PrintService:
             # 5. 執行列印
             logger.info("步驟 5/5: 執行列印...")
             await self.execute_print(job_info['job_id'])
-
+            
             logger.info("列印流程完成")
-            return True
-
+            return job_info['job_id']
+            
         except Exception as e:
-            logger.error(f"列印流程發生錯誤: {str(e)}")
+            logger.error(f"列印圖片過程發生錯誤: {str(e)}")
             raise

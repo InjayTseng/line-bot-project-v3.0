@@ -101,18 +101,21 @@ class PrinterService:
                 # 初始化列印服務
                 await self.print_service.authenticate_device()
                 
-                # 設定照片列印參數
+                # 設定照片列印參數 - 使用指定的設定
                 photo_print_settings = {
                     'media_size': 'ms_4x6in',  # 4x6 英吋照片尺寸
                     'media_type': 'mt_photopaper',  # 照片紙
-                    'borderless': False,  # 有邊框
+                    'borderless': True,  # 無邊框
                     'print_quality': 'high',  # 高品質
                     'color_mode': 'color',  # 彩色
                     'copies': 1
                 }
                 
-                # 創建列印任務
-                job_info = await self.print_service.create_print_job(photo_print_settings)
+                # 創建列印任務，指定使用照片模式
+                job_info = await self.print_service.create_print_job(
+                    print_settings=photo_print_settings,
+                    print_mode="photo"  # 明確指定使用照片模式
+                )
                 
                 # 上傳文件
                 await self.print_service.upload_print_file(pdf_path, job_info['upload_uri'])
