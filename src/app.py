@@ -6,7 +6,7 @@ from quart import Quart, request, abort, send_from_directory
 from linebot.v3 import WebhookParser
 from linebot.v3.messaging import Configuration, ApiClient, MessagingApi
 from linebot.v3.exceptions import InvalidSignatureError
-from linebot.v3.webhooks import MessageEvent, TextMessageContent, ImageMessageContent
+from linebot.v3.webhooks import MessageEvent, TextMessageContent, ImageMessageContent, FollowEvent
 
 from src.config import settings
 from src.handlers.message_handler import MessageHandler
@@ -58,7 +58,11 @@ async def callback():
         
         # 處理每個事件
         for event in events:
-            if isinstance(event, MessageEvent):
+            if isinstance(event, FollowEvent):
+                # 處理用戶關注事件
+                logger.info("收到關注事件")
+                await message_handler.handle_follow_event(event)
+            elif isinstance(event, MessageEvent):
                 if isinstance(event.message, TextMessageContent):
                     await message_handler.handle_text_message(event)
                 elif isinstance(event.message, ImageMessageContent):

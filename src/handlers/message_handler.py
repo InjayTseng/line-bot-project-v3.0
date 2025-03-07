@@ -15,11 +15,54 @@ class MessageHandler:
         self.line_service = LineService()
         self.image_service = ImageService()
         self.user_states = {}  # 用來存儲用戶的狀態
+        
+        # 歡迎訊息和使用說明
+        self.welcome_message = (
+            "🌟 歡迎使用照片相框合成機器人！ 🌟\n\n"
+            "這個機器人可以將您的照片與精美相框合成，創造獨特的回憶。\n\n"
+            "📸 使用方法：\n"
+            "1. 直接上傳一張照片\n"
+            "2. 選擇您喜歡的相框風格\n"
+            "3. 等待處理完成後，您可以選擇列印或分享\n\n"
+            "🔍 小提示：\n"
+            "• 一次只能處理一張照片\n"
+            "• 支援直式和橫式照片\n"
+            "• 照片會自動調整大小和位置\n"
+            "• 輸入「幫助」或「說明」可再次查看此訊息\n\n"
+            "開始使用吧！上傳您的第一張照片 📤"
+        )
+        
+        # 幫助關鍵字列表
+        self.help_keywords = ["幫助", "說明", "help", "指南", "怎麼用", "如何使用"]
+
+    async def handle_follow_event(self, event):
+        """處理用戶關注事件"""
+        try:
+            user_id = event.source.user_id
+            logger.info(f"新用戶關注：{user_id}")
+            
+            # 發送歡迎訊息
+            await self.line_service.reply_text(event.reply_token, self.welcome_message)
+            
+            # 清除該用戶的狀態（如果有）
+            if user_id in self.user_states:
+                del self.user_states[user_id]
+                
+            logger.info(f"已發送歡迎訊息給用戶：{user_id}")
+        except Exception as e:
+            logger.error(f"處理關注事件時發生錯誤：{str(e)}")
+            logger.error(traceback.format_exc())
 
     async def handle_text_message(self, event):
         """處理文字訊息"""
         user_id = event.source.user_id
         text = event.message.text
+        
+        # 檢查是否為幫助關鍵字
+        if text.lower() in [keyword.lower() for keyword in self.help_keywords]:
+            logger.info(f"用戶 {user_id} 請求幫助")
+            await self.line_service.reply_text(event.reply_token, self.welcome_message)
+            return
 
         if user_id in self.user_states:
             # 檢查是否要列印
