@@ -1,10 +1,16 @@
 import os
 import logging
-import numpy as np
+import traceback
 from PIL import Image
 import cloudinary
 import cloudinary.uploader
+import cloudinary.api
+import asyncio
+from io import BytesIO
+import time
+import math
 from src.config import settings
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -58,18 +64,21 @@ class ImageService:
             # 檢測連續的透明區域
             visited = np.zeros_like(transparent, dtype=bool)
             
-            # 遍歷圖片的每個像素
-            for y in range(height):
-                for x in range(width):
+            # 遍歷圖片的每個像素，使用較大的步長以提高效率
+            step = 5  # 每5個像素檢查一次
+            for y in range(0, height, step):
+                for x in range(0, width, step):
                     # 如果該像素是透明的且未被訪問過
                     if transparent[y, x] and not visited[y, x]:
                         # 使用 BFS 找出連續的透明區域
                         queue = [(x, y)]
                         visited[y, x] = True
                         min_x, min_y, max_x, max_y = x, y, x, y
+                        area_pixels = 0  # 計算區域包含的像素數
                         
                         while queue:
                             cx, cy = queue.pop(0)
+                            area_pixels += 1
                             
                             # 更新邊界框
                             min_x = min(min_x, cx)
@@ -77,17 +86,82 @@ class ImageService:
                             max_x = max(max_x, cx)
                             max_y = max(max_y, cy)
                             
-                            # 檢查相鄰的像素
-                            for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+                            # 檢查相鄰的像素，使用較大的步長
+                            for dx, dy in [(0, step), (step, 0), (0, -step), (-step, 0)]:
                                 nx, ny = cx + dx, cy + dy
                                 if 0 <= nx < width and 0 <= ny < height and transparent[ny, nx] and not visited[ny, nx]:
                                     queue.append((nx, ny))
                                     visited[ny, nx] = True
+                                    
+                                    # 標記中間的像素為已訪問
+                                    for i in range(1, step):
+                                        if dx != 0 and 0 <= cx + i * dx // step < width:
+                                            visited[cy, cx + i * dx // step] = True
+                                        if dy != 0 and 0 <= cy + i * dy // step < height:
+                                            visited[cy + i * dy // step, cx] = True
                         
-                        # 如果透明區域足夠大（過濾掉小的透明區域）
+                        # 計算區域面積
                         area = (max_x - min_x + 1) * (max_y - min_y + 1)
-                        if area > 10000:  # 假設最小區域為 100x100 像素
-                            regions.append((min_x, min_y, max_x, max_y))
+                        
+                        # 計算區域的透明度比例
+                        transparency_ratio = area_pixels / (area / (step * step))
+                        
+                        # 如果透明區域足夠大且透明度比例足夠高
+                        min_area = frame_width * frame_height * 0.05  # 至少為總面積的5%
+                        if area > min_area and transparency_ratio > 0.5:
+                            # 擴展邊界以確保包含所有透明像素
+                            margin = 5
+                            min_x = max(0, min_x - margin)
+                            min_y = max(0, min_y - margin)
+                            max_x = min(width - 1, max_x + margin)
+                            max_y = min(height - 1, max_y + margin)
+                            
+                            # 檢查是否為有效的矩形區域
+                            if max_x > min_x and max_y > min_y:
+                                regions.append((min_x, min_y, max_x, max_y))
+                                logger.info(f"找到透明區域: ({min_x}, {min_y}, {max_x}, {max_y}), 面積: {area}, 透明度比例: {transparency_ratio:.2f}")
+            
+            # 如果沒有找到透明區域，嘗試使用預定義的區域
+            if not regions:
+                logger.warning("未找到透明區域，嘗試使用預定義的區域")
+                
+                # 檢查相框文件名以確定類型
+                frame_filename = os.path.basename(frame_image.filename) if hasattr(frame_image, 'filename') else "unknown"
+                
+                if frame_filename == settings.PORTRAIT_FRAME:
+                    # 直式相框 - 左右兩個區域
+                    left_region_width = int(frame_width * 0.45)
+                    left_region_height = int(frame_height * 0.8)
+                    left_x = int(frame_width * 0.05)
+                    left_y = (frame_height - left_region_height) // 2
+                    
+                    right_region_width = int(frame_width * 0.45)
+                    right_region_height = int(frame_height * 0.8)
+                    right_x = int(frame_width * 0.5)
+                    right_y = (frame_height - right_region_height) // 2
+                    
+                    regions = [
+                        (left_x, left_y, left_x + left_region_width, left_y + left_region_height),
+                        (right_x, right_y, right_x + right_region_width, right_y + right_region_height)
+                    ]
+                    logger.info(f"使用預定義的直式相框區域: {regions}")
+                else:
+                    # 橫式相框 - 上下兩個區域
+                    top_region_width = int(frame_width * 0.8)
+                    top_region_height = int(frame_height * 0.45)
+                    top_x = (frame_width - top_region_width) // 2
+                    top_y = int(frame_height * 0.05)
+                    
+                    bottom_region_width = int(frame_width * 0.8)
+                    bottom_region_height = int(frame_height * 0.45)
+                    bottom_x = (frame_width - bottom_region_width) // 2
+                    bottom_y = int(frame_height * 0.5)
+                    
+                    regions = [
+                        (top_x, top_y, top_x + top_region_width, top_y + top_region_height),
+                        (bottom_x, bottom_y, bottom_x + bottom_region_width, bottom_y + bottom_region_height)
+                    ]
+                    logger.info(f"使用預定義的橫式相框區域: {regions}")
             
             # 根據區域大小排序（從大到小）
             regions.sort(key=lambda r: (r[2] - r[0]) * (r[3] - r[1]), reverse=True)
@@ -107,13 +181,33 @@ class ImageService:
                 regions.sort(key=lambda r: r[1])
                 logger.info(f"橫式相框 ({frame_filename}): 按 y 坐標排序透明區域")
                 
-            logger.info(f"找到 {len(regions)} 個透明區域: {regions}")
+            logger.info(f"最終找到 {len(regions)} 個透明區域: {regions}")
             return regions
         except Exception as e:
             logger.error(f"分析透明區域時發生錯誤: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
-            return []
+            
+            # 發生錯誤時返回預設區域
+            frame_width, frame_height = frame_image.size
+            
+            # 預設為橫式相框的上下兩個區域
+            top_region_width = int(frame_width * 0.8)
+            top_region_height = int(frame_height * 0.45)
+            top_x = (frame_width - top_region_width) // 2
+            top_y = int(frame_height * 0.05)
+            
+            bottom_region_width = int(frame_width * 0.8)
+            bottom_region_height = int(frame_height * 0.45)
+            bottom_x = (frame_width - bottom_region_width) // 2
+            bottom_y = int(frame_height * 0.5)
+            
+            default_regions = [
+                (top_x, top_y, top_x + top_region_width, top_y + top_region_height),
+                (bottom_x, bottom_y, bottom_x + bottom_region_width, bottom_y + bottom_region_height)
+            ]
+            logger.info(f"使用預設區域: {default_regions}")
+            return default_regions
 
     @staticmethod
     def fit_image_to_region(image, region_width, region_height, fill=True):
@@ -134,15 +228,34 @@ class ImageService:
             img_width, img_height = image.size
             logger.info(f"原始圖片尺寸: {img_width}x{img_height}, 目標區域尺寸: {region_width}x{region_height}")
             
+            # 檢查圖片方向
+            is_portrait = img_height > img_width
+            logger.info(f"圖片方向: {'直式' if is_portrait else '橫式'}")
+            
             # 計算縮放比例
             width_ratio = region_width / img_width
             height_ratio = region_height / img_height
             
-            # 根據填充模式選擇縮放比例
+            # 根據填充模式和圖片方向選擇縮放比例
             if fill:
-                # 填滿模式：選擇較大的比例，確保圖片填滿區域（可能裁剪）
-                ratio = max(width_ratio, height_ratio)
-                logger.info(f"填滿模式: 選擇較大的比例 {ratio}")
+                if is_portrait:
+                    # 直式照片：優先考慮寬度填滿，但確保高度不會過度裁剪
+                    # 如果高度比例太小（會導致過度裁剪），則使用高度比例
+                    if height_ratio < width_ratio * 0.6:  # 如果高度比例小於寬度比例的60%
+                        ratio = height_ratio
+                        logger.info(f"直式照片填滿模式: 使用高度比例 {ratio} 避免過度裁剪")
+                    else:
+                        ratio = width_ratio
+                        logger.info(f"直式照片填滿模式: 使用寬度比例 {ratio}")
+                else:
+                    # 橫式照片：優先考慮高度填滿，但確保寬度不會過度裁剪
+                    # 如果寬度比例太小（會導致過度裁剪），則使用寬度比例
+                    if width_ratio < height_ratio * 0.6:  # 如果寬度比例小於高度比例的60%
+                        ratio = width_ratio
+                        logger.info(f"橫式照片填滿模式: 使用寬度比例 {ratio} 避免過度裁剪")
+                    else:
+                        ratio = height_ratio
+                        logger.info(f"橫式照片填滿模式: 使用高度比例 {ratio}")
             else:
                 # 適應模式：選擇較小的比例，確保圖片完整顯示（可能有空白）
                 ratio = min(width_ratio, height_ratio)
@@ -170,10 +283,37 @@ class ImageService:
                 resized_image = resized_image.crop((left, top, right, bottom))
                 logger.info(f"裁剪後的圖片尺寸: {resized_image.size}")
             
+            # 如果圖片小於區域，創建一個透明背景並將圖片居中放置
+            elif not fill and (new_width < region_width or new_height < region_height):
+                # 創建透明背景
+                background = Image.new('RGBA', (region_width, region_height), (0, 0, 0, 0))
+                
+                # 計算居中位置
+                paste_x = (region_width - new_width) // 2
+                paste_y = (region_height - new_height) // 2
+                
+                logger.info(f"將圖片放置在透明背景上，位置: ({paste_x}, {paste_y})")
+                
+                # 將調整後的圖片粘貼到背景上
+                background.paste(resized_image, (paste_x, paste_y), resized_image.convert('RGBA'))
+                resized_image = background
+            
             return resized_image
         except Exception as e:
             logger.error(f"調整圖片大小時發生錯誤: {str(e)}")
-            return image
+            import traceback
+            logger.error(traceback.format_exc())
+            
+            # 發生錯誤時，嘗試簡單調整大小並返回
+            try:
+                # 使用簡單的縮放方法
+                ratio = min(region_width / image.size[0], region_height / image.size[1])
+                new_width = int(image.size[0] * ratio)
+                new_height = int(image.size[1] * ratio)
+                return image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            except:
+                # 如果仍然失敗，返回原始圖片
+                return image
 
     @staticmethod
     async def process_image_with_frame(image_filename, frame_style=None):
@@ -188,7 +328,6 @@ class ImageService:
             str: 處理後的圖片檔名，如果處理失敗則返回 None
         """
         try:
-            import asyncio
             # 構建檔案路徑
             image_path = os.path.join(settings.UPLOAD_FOLDER, image_filename)
             
@@ -243,7 +382,9 @@ class ImageService:
                                     # 計算縮放比例，保持原始照片的長寬比
                                     width_ratio = frame_box_width / user_width
                                     height_ratio = frame_box_height / user_height
-                                    ratio = min(width_ratio, height_ratio) * 0.9  # 縮小10%以確保有邊距
+                                    
+                                    # 直式照片通常需要填滿寬度，所以使用寬度比例，但確保不超過高度
+                                    ratio = min(width_ratio, height_ratio) * 0.95  # 縮小5%以確保有邊距
                                     logger.info(f"縮放比例: {ratio}")
                                     
                                     # 縮放用戶圖片
@@ -255,11 +396,11 @@ class ImageService:
                                     # 將用戶圖片轉換為 RGBA 模式
                                     user_image_resized = user_image_resized.convert('RGBA')
                                     
-                                    # 計算左側框框的位置
+                                    # 計算左側框框的位置 - 水平居中，垂直居中
                                     x_offset_left = int(frame_width * 0.05)  # 左側框框的左側位置
                                     y_offset_left = (frame_height - new_height) // 2  # 垂直居中
                                     
-                                    # 計算右側框框的位置
+                                    # 計算右側框框的位置 - 水平居中，垂直居中
                                     x_offset_right = int(frame_width * 0.5)  # 右側框框的左側位置
                                     y_offset_right = (frame_height - new_height) // 2  # 垂直居中
                                     
@@ -282,7 +423,9 @@ class ImageService:
                                     # 計算縮放比例，保持原始照片的長寬比
                                     width_ratio = frame_box_width / user_width
                                     height_ratio = frame_box_height / user_height
-                                    ratio = min(width_ratio, height_ratio) * 0.9  # 縮小10%以確保有邊距
+                                    
+                                    # 橫式照片通常需要填滿寬度，所以使用寬度比例，但確保不超過高度
+                                    ratio = min(width_ratio, height_ratio) * 0.95  # 縮小5%以確保有邊距
                                     logger.info(f"縮放比例: {ratio}")
                                     
                                     # 縮放用戶圖片
@@ -294,11 +437,11 @@ class ImageService:
                                     # 將用戶圖片轉換為 RGBA 模式
                                     user_image_resized = user_image_resized.convert('RGBA')
                                     
-                                    # 計算上方框框的位置
+                                    # 計算上方框框的位置 - 水平居中，垂直位置固定
                                     x_offset_top = (frame_width - new_width) // 2  # 水平居中
                                     y_offset_top = int(frame_height * 0.05)  # 上方框框的頂部位置
                                     
-                                    # 計算下方框框的位置
+                                    # 計算下方框框的位置 - 水平居中，垂直位置固定
                                     x_offset_bottom = (frame_width - new_width) // 2  # 水平居中
                                     y_offset_bottom = int(frame_height * 0.5)  # 下方框框的頂部位置
                                     
@@ -322,26 +465,50 @@ class ImageService:
                                 
                                 logger.info(f"區域1尺寸: {region1_width}x{region1_height}, 區域2尺寸: {region2_width}x{region2_height}")
                                 
-                                # 使用新的 fit_image_to_region 方法來調整圖片大小，填滿區域
-                                # 為每個區域單獨調整圖片大小
+                                # 使用改進的 fit_image_to_region 方法來調整圖片大小
+                                # 為每個區域單獨調整圖片大小，使用填滿模式但保留一些邊距
+                                # 直式照片使用較小的填充比例，避免過度裁剪
+                                fill_mode = True  # 默認使用填滿模式
+                                margin_ratio = 0.95  # 保留5%的邊距
+                                
+                                # 根據照片方向調整填充模式和邊距
+                                if is_portrait_image:
+                                    # 直式照片可能需要更多的邊距以避免過度裁剪
+                                    margin_ratio = 0.9  # 保留10%的邊距
+                                
+                                # 調整區域尺寸以添加邊距
+                                region1_width_with_margin = int(region1_width * margin_ratio)
+                                region1_height_with_margin = int(region1_height * margin_ratio)
+                                region2_width_with_margin = int(region2_width * margin_ratio)
+                                region2_height_with_margin = int(region2_height * margin_ratio)
+                                
+                                logger.info(f"添加邊距後的區域1尺寸: {region1_width_with_margin}x{region1_height_with_margin}")
+                                logger.info(f"添加邊距後的區域2尺寸: {region2_width_with_margin}x{region2_height_with_margin}")
+                                
                                 user_image_region1 = ImageService.fit_image_to_region(
-                                    user_image, region1_width, region1_height, fill=True
+                                    user_image, region1_width_with_margin, region1_height_with_margin, fill=fill_mode
                                 )
                                 user_image_region2 = ImageService.fit_image_to_region(
-                                    user_image, region2_width, region2_height, fill=True
+                                    user_image, region2_width_with_margin, region2_height_with_margin, fill=fill_mode
                                 )
                                 
                                 # 將用戶圖片轉換為 RGBA 模式
                                 user_image_region1 = user_image_region1.convert('RGBA')
                                 user_image_region2 = user_image_region2.convert('RGBA')
                                 
-                                # 將照片粘貼到結果圖像上，精確放置在透明區域
-                                result.paste(user_image_region1, (region1[0], region1[1]), user_image_region1)
-                                result.paste(user_image_region2, (region2[0], region2[1]), user_image_region2)
+                                # 計算居中位置
+                                region1_center_x = region1[0] + (region1_width - user_image_region1.width) // 2
+                                region1_center_y = region1[1] + (region1_height - user_image_region1.height) // 2
+                                region2_center_x = region2[0] + (region2_width - user_image_region2.width) // 2
+                                region2_center_y = region2[1] + (region2_height - user_image_region2.height) // 2
+                                
+                                # 將照片粘貼到結果圖像上，精確放置在透明區域的中心
+                                result.paste(user_image_region1, (region1_center_x, region1_center_y), user_image_region1)
+                                result.paste(user_image_region2, (region2_center_x, region2_center_y), user_image_region2)
                                 
                                 logger.info(f"照片處理: 原始大小 ({user_width}x{user_height})")
                                 logger.info(f"區域1照片大小: {user_image_region1.size}, 區域2照片大小: {user_image_region2.size}")
-                                logger.info(f"區域1照片位置: ({region1[0]}, {region1[1]}), 區域2照片位置: ({region2[0]}, {region2[1]})")
+                                logger.info(f"區域1照片位置: ({region1_center_x}, {region1_center_y}), 區域2照片位置: ({region2_center_x}, {region2_center_y})")
                             
                             # 將框架粘貼到結果圖像上
                             result.paste(frame_image, (0, 0), frame_image)
@@ -353,16 +520,56 @@ class ImageService:
                             processed_path = os.path.join(settings.UPLOAD_FOLDER, processed_filename)
                             logger.info(f"生成的新檔名: {processed_filename}")
                             
+                            # 檢查結果圖片的尺寸
+                            result_width, result_height = result.size
+                            logger.info(f"處理後的圖片尺寸: {result_width}x{result_height}")
+                            
+                            # 確保圖片尺寸不超過 LINE 平台的限制
+                            max_width = 1024
+                            max_height = 1024
+                            needs_resize = False
+                            
+                            if result_width > max_width:
+                                ratio = max_width / result_width
+                                new_width = max_width
+                                new_height = int(result_height * ratio)
+                                needs_resize = True
+                            elif result_height > max_height:
+                                ratio = max_height / result_height
+                                new_height = max_height
+                                new_width = int(result_width * ratio)
+                                needs_resize = True
+                            
+                            if needs_resize:
+                                logger.info(f"調整最終圖片尺寸為: {new_width}x{new_height}")
+                                result = result.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                            
                             # 儲存處理後的圖片（轉換為 RGB 以移除透明度）
                             result = result.convert('RGB')
                             
-                            # 儲存高質量圖片，不進行額外壓縮
-                            result.save(processed_path, 'JPEG', quality=95, optimize=True)
+                            # 使用適當的質量設置，直式照片使用較低的質量以減小文件大小
+                            quality = 85 if is_portrait_image else 90
+                            result.save(processed_path, 'JPEG', quality=quality, optimize=True)
                             
-                            # 記錄處理後的圖片大小
+                            # 檢查文件大小，如果太大則進一步壓縮
                             file_size = os.path.getsize(processed_path)
+                            logger.info(f"初始處理後的圖片大小：{file_size} bytes")
+                            
+                            # 如果文件仍然太大，進一步降低質量
+                            max_size = 500000  # 500KB
+                            if file_size > max_size:
+                                with Image.open(processed_path) as img:
+                                    for q in [80, 75, 70, 65]:
+                                        img.save(processed_path, 'JPEG', quality=q, optimize=True)
+                                        new_size = os.path.getsize(processed_path)
+                                        logger.info(f"進一步壓縮照片，質量={q}，新大小={new_size} bytes")
+                                        if new_size <= max_size:
+                                            break
+                            
+                            # 記錄最終處理後的圖片大小
+                            final_size = os.path.getsize(processed_path)
                             logger.info(f"圖片處理完成：{processed_path}")
-                            logger.info(f"處理後的圖片大小：{file_size} bytes")
+                            logger.info(f"最終處理後的圖片大小：{final_size} bytes")
                             
                             return processed_filename
                 except Exception as e:
@@ -398,47 +605,81 @@ class ImageService:
             file_size = os.path.getsize(image_path)
             logger.info(f"準備上傳到 Cloudinary 的文件大小：{file_size} bytes")
             
-            # 檢查是否為直式照片
-            is_portrait = "portrait" in os.path.basename(image_path)
-            logger.info(f"照片方向: {'直式' if is_portrait else '橫式'}")
+            # 檢查是否為直式照片 - 通過實際檢查圖片尺寸而不僅僅依賴文件名
+            is_portrait = False
+            try:
+                with Image.open(image_path) as img:
+                    width, height = img.size
+                    is_portrait = height > width
+                    logger.info(f"照片方向檢查: 尺寸={width}x{height}, 是否為直式={is_portrait}")
+            except Exception as e:
+                logger.error(f"檢查圖片方向時發生錯誤: {str(e)}")
+                # 如果無法檢查尺寸，則回退到使用文件名判斷
+                is_portrait = "portrait" in os.path.basename(image_path)
+                logger.info(f"使用文件名判斷照片方向: {'直式' if is_portrait else '橫式'}")
             
-            # 如果是直式照片，確保它符合 LINE 平台的要求
-            if is_portrait:
-                try:
-                    with Image.open(image_path) as img:
-                        # 檢查圖片尺寸
-                        width, height = img.size
-                        logger.info(f"原始圖片尺寸: {width}x{height}")
-                        
-                        # 調整圖片大小，確保寬度不超過 1024 像素
-                        max_width = 1024
+            # 處理圖片，確保符合 LINE 平台的要求
+            try:
+                with Image.open(image_path) as img:
+                    # 檢查圖片尺寸
+                    width, height = img.size
+                    logger.info(f"原始圖片尺寸: {width}x{height}")
+                    
+                    # 調整圖片大小
+                    max_width = 1024  # LINE 平台的最大寬度限制
+                    max_height = 1024  # 設置一個合理的最大高度
+                    
+                    # 計算新尺寸，保持原始比例
+                    if is_portrait:
+                        # 直式照片 - 確保寬度不超過限制
                         if width > max_width:
                             ratio = max_width / width
                             new_width = max_width
                             new_height = int(height * ratio)
+                            # 確保高度也不超過限制
+                            if new_height > max_height:
+                                ratio = max_height / new_height
+                                new_height = max_height
+                                new_width = int(new_width * ratio)
                             img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                            logger.info(f"調整後的圖片尺寸: {new_width}x{new_height}")
-                        
-                        # 轉換為 RGB 模式（移除透明度）
+                            logger.info(f"調整後的直式照片尺寸: {new_width}x{new_height}")
+                    else:
+                        # 橫式照片 - 確保高度不超過限制
+                        if height > max_height:
+                            ratio = max_height / height
+                            new_height = max_height
+                            new_width = int(width * ratio)
+                            # 確保寬度也不超過限制
+                            if new_width > max_width:
+                                ratio = max_width / new_width
+                                new_width = max_width
+                                new_height = int(new_height * ratio)
+                            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                            logger.info(f"調整後的橫式照片尺寸: {new_width}x{new_height}")
+                    
+                    # 確保圖片是 RGB 模式（移除透明度）
+                    if img.mode != 'RGB':
                         img = img.convert('RGB')
-                        
-                        # 保存為 JPEG 格式，使用較低的質量
-                        img.save(image_path, 'JPEG', quality=85, optimize=True)
-                        logger.info(f"直式照片已調整，新大小：{os.path.getsize(image_path)} bytes")
-                except Exception as e:
-                    logger.error(f"調整直式照片失敗：{str(e)}")
-                    logger.error(traceback.format_exc())
-            
-            # 如果文件太大，進行適度壓縮，但保持較高質量
-            elif file_size > 1500000:  # 如果大於 1.5MB
-                try:
-                    with Image.open(image_path) as img:
-                        # 保存為較高質量
-                        img = img.convert('RGB')
-                        img.save(image_path, 'JPEG', quality=90, optimize=True)
-                        logger.info(f"圖片已適度壓縮，新大小：{os.path.getsize(image_path)} bytes")
-                except Exception as e:
-                    logger.error(f"壓縮圖片失敗：{str(e)}")
+                        logger.info("圖片已轉換為 RGB 模式")
+                    
+                    # 保存為 JPEG 格式，使用適當的質量
+                    quality = 85 if is_portrait else 90  # 直式照片使用稍低的質量以減小文件大小
+                    img.save(image_path, 'JPEG', quality=quality, optimize=True)
+                    new_size = os.path.getsize(image_path)
+                    logger.info(f"照片已調整，新大小：{new_size} bytes")
+                    
+                    # 如果文件仍然太大，進一步降低質量
+                    max_size = 500000  # 500KB
+                    if new_size > max_size:
+                        for q in [80, 75, 70, 65]:
+                            img.save(image_path, 'JPEG', quality=q, optimize=True)
+                            new_size = os.path.getsize(image_path)
+                            logger.info(f"進一步壓縮照片，質量={q}，新大小={new_size} bytes")
+                            if new_size <= max_size:
+                                break
+            except Exception as e:
+                logger.error(f"調整照片失敗：{str(e)}")
+                logger.error(traceback.format_exc())
             
             logger.info(f"開始上傳到 Cloudinary：{image_path}")
             
@@ -465,14 +706,37 @@ class ImageService:
                         {"fetch_format": "auto"}   # 自動選擇最佳格式
                     ]
                 
-                upload_result = cloudinary.uploader.upload(
-                    image_path,
-                    folder="line-bot-frames",
-                    transformation=transformation
-                )
-                cloudinary_url = upload_result.get('secure_url')
-                logger.info(f"Cloudinary 上傳成功：{cloudinary_url}")
-                return cloudinary_url
+                # 添加更多的錯誤處理和重試邏輯
+                max_retries = 3
+                retry_count = 0
+                last_error = None
+                
+                while retry_count < max_retries:
+                    try:
+                        upload_result = cloudinary.uploader.upload(
+                            image_path,
+                            folder="line-bot-frames",
+                            transformation=transformation,
+                            timeout=30  # 設置超時時間
+                        )
+                        cloudinary_url = upload_result.get('secure_url')
+                        logger.info(f"Cloudinary 上傳成功：{cloudinary_url}")
+                        return cloudinary_url
+                    except Exception as e:
+                        last_error = e
+                        retry_count += 1
+                        logger.warning(f"Cloudinary 上傳失敗 (嘗試 {retry_count}/{max_retries}): {str(e)}")
+                        if retry_count < max_retries:
+                            # 等待一段時間後重試
+                            await asyncio.sleep(1)
+                
+                # 如果所有重試都失敗
+                logger.error(f"所有 Cloudinary 上傳嘗試都失敗: {str(last_error)}")
+                # 嘗試使用本地 URL
+                base_url = settings.get_base_url()
+                local_url = f"{base_url}/tmp/uploads/{os.path.basename(image_path)}"
+                logger.info(f"使用本地 URL 替代：{local_url}")
+                return local_url
             except Exception as e:
                 logger.error(f"Cloudinary 上傳失敗：{str(e)}")
                 # 嘗試使用本地 URL
