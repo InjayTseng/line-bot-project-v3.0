@@ -1,0 +1,47 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+venv/
+
+# Docker
+Dockerfile
+.dockerignore
+
+# 日誌文件
+logs/
+*.log
+
+# 臨時文件
+tmp/
+.DS_Store
+
+# 測試文件
+tests/
+
+# 其他
+.env.example
+README.md
+LICENSE
+*.md 
