@@ -1,0 +1,32 @@
+{
+  "family": "line-bot-task",
+  "networkMode": "awsvpc",
+  "executionRoleArn": "arn:aws:iam::058264521223:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "line-bot-container",
+      "image": "nginx:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "hostPort": 80,
+          "protocol": "tcp"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/line-bot-task",
+          "awslogs-region": "ap-northeast-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ],
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512"
+} 

@@ -1,0 +1,66 @@
+{
+    "family": "line-bot-task",
+    "executionRoleArn": "arn:aws:iam::058264521223:role/ecsTaskExecutionRole",
+    "networkMode": "awsvpc",
+    "containerDefinitions": [
+        {
+            "name": "line-bot-container",
+            "image": "dtsengdocker/line-bot-printer:latest",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 5000,
+                    "hostPort": 5000,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "PORT",
+                    "value": "5000"
+                },
+                {
+                    "name": "LINE_CHANNEL_SECRET",
+                    "value": "1d3649a096dd20c6b4e0917b3270841f"
+                },
+                {
+                    "name": "LINE_CHANNEL_ACCESS_TOKEN",
+                    "value": "DWRA+HWkxIdL6/2+W+omDW7lIVnYaEO/ORyCo+rm3TtkGDzwo9dnJvSGIxke8/om+Pbj3FLr8iApjCGeeSmYkWxD67CewJfnk/nuVStpggxP+JlZCKCyDAM8plcJOdocNSt1g+/u9N+Qxne5586Y/AdB04t89/1O/w1cDnyilFU="
+                },
+                {
+                    "name": "NGROK_URL",
+                    "value": "https://ea3c-124-218-234-7.ngrok-free.app"
+                },
+                {
+                    "name": "CLOUDINARY_CLOUD_NAME",
+                    "value": "df7agrhjy"
+                },
+                {
+                    "name": "CLOUDINARY_API_KEY",
+                    "value": "925977586682315"
+                },
+                {
+                    "name": "CLOUDINARY_API_SECRET",
+                    "value": "1TbBDUy2IP4m85r8ssmOCtwfCZc"
+                }
+            ],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/line-bot-task",
+                    "awslogs-region": "ap-northeast-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "systemControls": []
+        }
+    ],
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "256",
+    "memory": "512"
+} 

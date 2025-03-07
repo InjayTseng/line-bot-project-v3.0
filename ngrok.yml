@@ -1,0 +1,13 @@
+version: "2"
+authtoken: 2sXSdqQVQ0qL3H7rT6w01vSmcfY_GaBYu9i9S1u2A1YcTRc4
+tunnels:
+  app:
+    proto: http
+    addr: 5001
+  api:
+    proto: http
+    addr: 5000
+  line-bot:
+    proto: http
+    addr: 5000
+    # 如果您需要其他隧道，可以在這裡添加 
