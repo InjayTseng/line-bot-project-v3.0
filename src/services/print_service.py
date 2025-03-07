@@ -5,6 +5,7 @@ import logging
 import aiohttp
 from urllib.parse import urlencode
 from src.config import settings
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
@@ -50,64 +51,64 @@ class PrintService:
         return self.email
 
     async def authenticate_device(self):
-        """使用設備 ID 進行認證"""
+        """認證設備，獲取 access_token 和 device_id"""
         try:
             # 檢查必要的設定
-            if not all([self.host, self.client_id, self.secret, self.email]):
+            if not all([self.host, self.client_id, self.secret]):
                 missing = []
                 if not self.host: missing.append('PRINTER_HOST')
                 if not self.client_id: missing.append('PRINTER_CLIENT_ID')
                 if not self.secret: missing.append('PRINTER_SECRET')
-                if not self.email: missing.append('PRINTER_EMAIL')
                 error_msg = f"缺少必要的印表機設定: {', '.join(missing)}"
                 logger.error(error_msg)
                 raise Exception(error_msg)
             
-            # 取得設備 ID
-            self._device_id = self._get_device_id()
+            # 直接硬編碼正確的電子郵件地址
+            self._device_id = "pma16577avrgx6@print.epsonconnect.com"
             logger.info(f"使用設備 ID: {self._device_id}")
-
+            
             # 準備認證標頭
+            auth_header = self._get_basic_auth()
             headers = {
-                'Authorization': self._get_basic_auth(),
+                'Authorization': auth_header,
                 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
                 'Accept': 'application/json;charset=utf-8'
             }
+            
             logger.info("=== 認證資訊 ===")
-            logger.info(f"Authorization: {headers['Authorization']}")
+            logger.info(f"Authorization: {auth_header}")
             logger.info(f"Content-Type: {headers['Content-Type']}")
-
-            # 準備請求資料
+            
+            # 使用 device_auth 授權類型
             data = {
                 'grant_type': 'password',
                 'username': self._device_id,
-                'password': ''
+                'password': self.secret  # 嘗試使用 client_secret 作為密碼
             }
-            auth_uri = f'{self.base_url}/oauth2/auth/token?subject=printer'
-            query_string = urlencode(data)
             
             logger.info("=== 請求資訊 ===")
+            auth_uri = f'{self.base_url}/oauth2/auth/token?subject=printer'
             logger.info(f"URI: {auth_uri}")
             logger.info(f"Data: {data}")
-
+            
             # 發送認證請求
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.post(
                         auth_uri,
                         headers=headers,
-                        data=query_string.encode('utf-8')
+                        data=data
                     ) as response:
                         response_text = await response.text()
                         logger.info("=== 回應資訊 ===")
                         logger.info(f"狀態碼: {response.status}")
                         logger.info(f"內容: {response_text}")
-
+                        
                         if response.status != 200:
                             error_msg = f"認證失敗: {response.status} - {response_text}"
                             logger.error(error_msg)
                             raise Exception(error_msg)
-
+                        
                         # 解析回應
                         try:
                             result = json.loads(response_text)
@@ -115,7 +116,7 @@ class PrintService:
                             error_msg = f"無法解析回應內容: {str(e)}"
                             logger.error(error_msg)
                             raise Exception(error_msg)
-
+                        
                         # 檢查必要的欄位
                         self._access_token = result.get('access_token')
                         self._subject_id = result.get('subject_id')
@@ -124,21 +125,21 @@ class PrintService:
                             error_msg = "回應中缺少必要的欄位"
                             logger.error(error_msg)
                             raise Exception(error_msg)
-
+                        
                         logger.info("=== 認證成功 ===")
                         logger.info(f"Access Token: {self._access_token}")
                         logger.info(f"Subject ID: {self._subject_id}")
-
+                        
                         return {
                             'access_token': self._access_token,
                             'device_id': self._device_id
                         }
-
+            
             except aiohttp.ClientError as e:
                 error_msg = f"網路請求失敗: {str(e)}"
                 logger.error(error_msg)
                 raise Exception(error_msg)
-
+        
         except Exception as e:
             logger.error(f"認證過程發生錯誤: {str(e)}")
             raise
@@ -159,12 +160,12 @@ class PrintService:
                 'Accept': 'application/json;charset=utf-8'
             }
 
-            # 預設的列印設定
+            # 預設的列印設定 - 使用 4x6 照片設定
             default_settings = {
-                'media_size': 'ms_a4',
-                'media_type': 'mt_plainpaper',
-                'borderless': False,
-                'print_quality': 'normal',
+                'media_size': 'ms_4x6in',  # 4x6 英寸
+                'media_type': 'mt_photopaper',  # 照片紙
+                'borderless': False,  # 有邊框
+                'print_quality': 'high',  # 高品質
                 'source': 'auto',
                 'color_mode': 'color',
                 'reverse_order': False,
@@ -175,10 +176,19 @@ class PrintService:
             # 如果有提供自定義設定，則合併
             if print_settings:
                 default_settings.update(print_settings)
+                
+            # 記錄最終的列印設定
+            logger.info("=== 列印設定 ===")
+            for key, value in default_settings.items():
+                logger.info(f"{key}: {value}")
+
+            # 根據紙張大小設置列印模式
+            print_mode = "photo"  # 使用照片模式
+            logger.info(f"使用照片列印模式: {print_mode}")
 
             data = {
-                'job_name': 'LINE Bot Print Job',
-                'print_mode': 'document',  # 使用 document 模式
+                'job_name': 'LINE Bot Photo Print',
+                'print_mode': print_mode,
                 'print_setting': default_settings
             }
 

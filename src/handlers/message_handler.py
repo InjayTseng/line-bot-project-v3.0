@@ -93,7 +93,7 @@ class MessageHandler:
                             # 發送完成訊息
                             await self.line_service.push_message(
                                 event.source.user_id,
-                                TextMessage(text="列印完成！")
+                                TextMessage(text="照片列印完成！您的 4x6 照片已準備好。")
                             )
                             
                             # 清理檔案
@@ -121,11 +121,11 @@ class MessageHandler:
                     await printer_service.print_photo(processed_path, on_print_complete)
                     
                     # 回覆等待訊息
-                    await self.line_service.reply_text(event.reply_token, "等待列印中...")
+                    await self.line_service.reply_text(event.reply_token, "正在準備列印您的 4x6 照片，請稍候...")
                     return
                 except Exception as e:
                     logger.error(f"列印失敗：{str(e)}")
-                    await self.line_service.reply_text(event.reply_token, "列印失敗，請稍後再試。")
+                    await self.line_service.reply_text(event.reply_token, "照片列印失敗，請稍後再試。")
                     return
             else:
                 await self.line_service.reply_text(
