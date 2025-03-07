@@ -236,26 +236,11 @@ class ImageService:
             width_ratio = region_width / img_width
             height_ratio = region_height / img_height
             
-            # 根據填充模式和圖片方向選擇縮放比例
+            # 根據填充模式選擇縮放比例
             if fill:
-                if is_portrait:
-                    # 直式照片：優先考慮寬度填滿，但確保高度不會過度裁剪
-                    # 如果高度比例太小（會導致過度裁剪），則使用高度比例
-                    if height_ratio < width_ratio * 0.6:  # 如果高度比例小於寬度比例的60%
-                        ratio = height_ratio
-                        logger.info(f"直式照片填滿模式: 使用高度比例 {ratio} 避免過度裁剪")
-                    else:
-                        ratio = width_ratio
-                        logger.info(f"直式照片填滿模式: 使用寬度比例 {ratio}")
-                else:
-                    # 橫式照片：優先考慮高度填滿，但確保寬度不會過度裁剪
-                    # 如果寬度比例太小（會導致過度裁剪），則使用寬度比例
-                    if width_ratio < height_ratio * 0.6:  # 如果寬度比例小於高度比例的60%
-                        ratio = width_ratio
-                        logger.info(f"橫式照片填滿模式: 使用寬度比例 {ratio} 避免過度裁剪")
-                    else:
-                        ratio = height_ratio
-                        logger.info(f"橫式照片填滿模式: 使用高度比例 {ratio}")
+                # 填滿模式：選擇較大的比例，確保圖片完全填滿區域（可能需要裁剪）
+                ratio = max(width_ratio, height_ratio)
+                logger.info(f"填滿模式: 選擇較大的比例 {ratio} 以確保完全填滿區域")
             else:
                 # 適應模式：選擇較小的比例，確保圖片完整顯示（可能有空白）
                 ratio = min(width_ratio, height_ratio)
@@ -271,7 +256,7 @@ class ImageService:
             
             # 如果是填滿模式且圖片大於區域，進行裁剪
             if fill and (new_width > region_width or new_height > region_height):
-                # 計算裁剪區域
+                # 計算裁剪區域，以中心點為對焦點
                 left = (new_width - region_width) // 2 if new_width > region_width else 0
                 top = (new_height - region_height) // 2 if new_height > region_height else 0
                 right = left + region_width if new_width > region_width else new_width
@@ -282,6 +267,11 @@ class ImageService:
                 # 裁剪圖片
                 resized_image = resized_image.crop((left, top, right, bottom))
                 logger.info(f"裁剪後的圖片尺寸: {resized_image.size}")
+                
+                # 確保裁剪後的圖片尺寸與目標區域完全一致
+                if resized_image.size != (region_width, region_height):
+                    logger.info(f"調整最終尺寸以完全匹配目標區域: {region_width}x{region_height}")
+                    resized_image = resized_image.resize((region_width, region_height), Image.Resampling.LANCZOS)
             
             # 如果圖片小於區域，創建一個透明背景並將圖片居中放置
             elif not fill and (new_width < region_width or new_height < region_height):
@@ -306,11 +296,16 @@ class ImageService:
             
             # 發生錯誤時，嘗試簡單調整大小並返回
             try:
-                # 使用簡單的縮放方法
-                ratio = min(region_width / image.size[0], region_height / image.size[1])
+                # 使用簡單的縮放方法，確保填滿
+                ratio = max(region_width / image.size[0], region_height / image.size[1])
                 new_width = int(image.size[0] * ratio)
                 new_height = int(image.size[1] * ratio)
-                return image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                resized = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                
+                # 裁剪以適應目標區域
+                left = (new_width - region_width) // 2
+                top = (new_height - region_height) // 2
+                return resized.crop((left, top, left + region_width, top + region_height))
             except:
                 # 如果仍然失敗，返回原始圖片
                 return image
@@ -466,49 +461,28 @@ class ImageService:
                                 logger.info(f"區域1尺寸: {region1_width}x{region1_height}, 區域2尺寸: {region2_width}x{region2_height}")
                                 
                                 # 使用改進的 fit_image_to_region 方法來調整圖片大小
-                                # 為每個區域單獨調整圖片大小，使用填滿模式但保留一些邊距
-                                # 直式照片使用較小的填充比例，避免過度裁剪
-                                fill_mode = True  # 默認使用填滿模式
-                                margin_ratio = 0.95  # 保留5%的邊距
+                                # 為每個區域單獨調整圖片大小，使用填滿模式確保完全填滿黑框區域
+                                fill_mode = True  # 使用填滿模式
                                 
-                                # 根據照片方向調整填充模式和邊距
-                                if is_portrait_image:
-                                    # 直式照片可能需要更多的邊距以避免過度裁剪
-                                    margin_ratio = 0.9  # 保留10%的邊距
-                                
-                                # 調整區域尺寸以添加邊距
-                                region1_width_with_margin = int(region1_width * margin_ratio)
-                                region1_height_with_margin = int(region1_height * margin_ratio)
-                                region2_width_with_margin = int(region2_width * margin_ratio)
-                                region2_height_with_margin = int(region2_height * margin_ratio)
-                                
-                                logger.info(f"添加邊距後的區域1尺寸: {region1_width_with_margin}x{region1_height_with_margin}")
-                                logger.info(f"添加邊距後的區域2尺寸: {region2_width_with_margin}x{region2_height_with_margin}")
-                                
+                                # 調整區域尺寸以確保完全填滿
                                 user_image_region1 = ImageService.fit_image_to_region(
-                                    user_image, region1_width_with_margin, region1_height_with_margin, fill=fill_mode
+                                    user_image, region1_width, region1_height, fill=fill_mode
                                 )
                                 user_image_region2 = ImageService.fit_image_to_region(
-                                    user_image, region2_width_with_margin, region2_height_with_margin, fill=fill_mode
+                                    user_image, region2_width, region2_height, fill=fill_mode
                                 )
                                 
                                 # 將用戶圖片轉換為 RGBA 模式
                                 user_image_region1 = user_image_region1.convert('RGBA')
                                 user_image_region2 = user_image_region2.convert('RGBA')
                                 
-                                # 計算居中位置
-                                region1_center_x = region1[0] + (region1_width - user_image_region1.width) // 2
-                                region1_center_y = region1[1] + (region1_height - user_image_region1.height) // 2
-                                region2_center_x = region2[0] + (region2_width - user_image_region2.width) // 2
-                                region2_center_y = region2[1] + (region2_height - user_image_region2.height) // 2
-                                
-                                # 將照片粘貼到結果圖像上，精確放置在透明區域的中心
-                                result.paste(user_image_region1, (region1_center_x, region1_center_y), user_image_region1)
-                                result.paste(user_image_region2, (region2_center_x, region2_center_y), user_image_region2)
+                                # 將照片粘貼到結果圖像上，精確放置在透明區域
+                                result.paste(user_image_region1, (region1[0], region1[1]), user_image_region1)
+                                result.paste(user_image_region2, (region2[0], region2[1]), user_image_region2)
                                 
                                 logger.info(f"照片處理: 原始大小 ({user_width}x{user_height})")
                                 logger.info(f"區域1照片大小: {user_image_region1.size}, 區域2照片大小: {user_image_region2.size}")
-                                logger.info(f"區域1照片位置: ({region1_center_x}, {region1_center_y}), 區域2照片位置: ({region2_center_x}, {region2_center_y})")
+                                logger.info(f"區域1照片位置: ({region1[0]}, {region1[1]}), 區域2照片位置: ({region2[0]}, {region2[1]})")
                             
                             # 將框架粘貼到結果圖像上
                             result.paste(frame_image, (0, 0), frame_image)
