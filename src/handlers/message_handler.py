@@ -79,11 +79,29 @@ class MessageHandler:
                 try:
                     # 檢查用戶是否有上傳過照片
                     if user_id in self.user_states and 'processed_path' in self.user_states[user_id]:
-                        # 提示用戶使用 Epson 官方 LINE Bot
+                        # 提供詳細的 Epson Printer LINE Bot 使用指南（第一條消息）
+                        guide_message = (
+                            "請按照以下步驟使用 Epson Printer LINE Bot 列印您的照片：\n\n"
+                            "1. 點進 Epson Printer LINE BOT\n"
+                            "2. 選擇「印表機管理」\n"
+                            "3. 選擇「印表機登入」\n"
+                            "4. 輸入印表機郵件地址：pma16577avrgx6\n"
+                            "5. 印表機名稱：任意取名\n\n"
+                            "請點此前往印表機 BOT：https://line.me/R/ti/p/%40199utzga"
+                        )
+                        
+                        # 發送第一條消息（使用指南）
                         await self.line_service.reply_text(
                             event.reply_token, 
-                            "我們的列印功能已更新！\n請添加 Epson 官方 LINE Bot (@199utzga) 來列印您的照片。\n這將提供更好的列印體驗和選項。"
+                            guide_message
                         )
+                        
+                        # 發送第二條消息（只有印表機郵件地址，方便複製）
+                        await self.line_service.push_message(
+                            user_id,
+                            TextMessage(text="pma16577avrgx6")
+                        )
+                        
                         return
                     else:
                         await self.line_service.reply_text(event.reply_token, "請先上傳一張照片，然後再嘗試列印。")
@@ -95,7 +113,7 @@ class MessageHandler:
             else:
                 await self.line_service.reply_text(
                     event.reply_token,
-                    "您的照片已處理完成！如果想要繼續處理其他照片，請直接上傳新的圖片。\n或是添加 Epson 官方 LINE Bot (@199utzga) 進行列印。"
+                    "您的照片已處理完成！如果想要繼續處理其他照片，請直接上傳新的圖片。\n或是點選「列印設定」按鈕進行列印。"
                 )
         else:
             # 用戶尚未上傳圖片
@@ -202,7 +220,7 @@ class MessageHandler:
                                     template=ConfirmTemplate(
                                         text="您想要列印這張照片嗎？",
                                         actions=[
-                                            URIAction(label="使用 Epson 列印", uri="https://line.me/R/ti/p/%40199utzga"),
+                                            MessageAction(label="列印設定", text="Print"),
                                             MessageAction(label="繼續上傳", text="繼續上傳")
                                         ]
                                     )
@@ -230,7 +248,7 @@ class MessageHandler:
                                         template=ConfirmTemplate(
                                             text="您想要列印這張照片嗎？",
                                             actions=[
-                                                URIAction(label="使用 Epson 列印", uri="https://line.me/R/ti/p/%40199utzga"),
+                                                MessageAction(label="列印設定", text="Print"),
                                                 MessageAction(label="繼續上傳", text="繼續上傳")
                                             ]
                                         )
@@ -242,7 +260,7 @@ class MessageHandler:
                                 # 如果還是失敗，嘗試只發送文字訊息
                                 await self.line_service.reply_text(
                                     event.reply_token, 
-                                    f"您的照片已處理完成！圖片可在此查看：{cloudinary_url}\n請添加 Epson 官方 LINE Bot (@199utzga) 進行列印，或直接上傳新照片繼續處理。"
+                                    f"您的照片已處理完成！圖片可在此查看：{cloudinary_url}\n請點選「列印設定」按鈕進行列印，或直接上傳新照片繼續處理。"
                                 )
                     else:
                         # 對於橫式照片，先發送圖片，然後發送確認模板
@@ -264,7 +282,7 @@ class MessageHandler:
                                     template=ConfirmTemplate(
                                         text="您想要列印這張照片嗎？",
                                         actions=[
-                                            URIAction(label="使用 Epson 列印", uri="https://line.me/R/ti/p/%40199utzga"),
+                                            MessageAction(label="列印設定", text="Print"),
                                             MessageAction(label="繼續上傳", text="繼續上傳")
                                         ]
                                     )
@@ -277,7 +295,7 @@ class MessageHandler:
                             # 如果發送確認模板失敗，發送普通文字訊息
                             await self.line_service.push_message(
                                 event.source.user_id,
-                                TextMessage(text="請添加 Epson 官方 LINE Bot (@199utzga) 進行列印，或直接上傳新照片繼續處理。")
+                                TextMessage(text="請點選「列印設定」按鈕進行列印，或直接上傳新照片繼續處理。")
                             )
                 except Exception as e:
                     logger.error(f"發送圖片訊息失敗：{str(e)}")
@@ -287,7 +305,7 @@ class MessageHandler:
                         logger.info(f"嘗試只發送文字訊息: {cloudinary_url}")
                         await self.line_service.reply_text(
                             event.reply_token, 
-                            f"您的照片已處理完成！圖片可在此查看：{cloudinary_url}\n請添加 Epson 官方 LINE Bot (@199utzga) 進行列印，或直接上傳新照片繼續處理。"
+                            f"您的照片已處理完成！圖片可在此查看：{cloudinary_url}\n請點選「列印設定」按鈕進行列印，或直接上傳新照片繼續處理。"
                         )
                         logger.info(f"文字訊息發送成功: {cloudinary_url}")
                     except Exception as text_error:
